@@ -1,12 +1,20 @@
+/**
+ * Main entry point of program.
+ * Sets up devices. Handles interrupts.
+ */
+
 #include "fdompin.h"
 #include "fdom.h"
 #include "esp_system.h"
 #include "driver/spi_master.h"
 #include "soc/gpio_struct.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
 #include "soc/gpio_struct.h"
-#include "driver/gpio.h"
 #include <can/mcp2517fd.h>
+#include "esp_heap_caps.h"
 
 
 #define PARALLEL_LINES 16
@@ -24,14 +32,54 @@ MCP2517FD * can2;
 
 
 
-typedef struct {
-    uint8_t cmd;
-    uint8_t data[16];
-    uint8_t databytes; //No of data in data; bit 7 = delay after set; 0xFF = end of cmds.
-} lcd_init_cmd_t;
+
+// queue for gpio handling
+
+// interrupt handler for sending to cans
+
+static xQueueHandle gpio_evt_queue = NULL;
+
+
+static void IRAM_ATTR gpio_isr_handler(void * arg)
+{
+    uint32_t gpio_num = (uint32_t) arg;
+    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+
+}
+
+
+static void gpio_task(void* arg)
+{
+    bool toggle = false;
+    uint32_t io_num;
+    while(1){
+        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+            if (toggle)
+            {
+
+                toggle = false;
+                rgb1->set(3000,8192,8192,false, 10, 10, 0);
+
+            }
+            else
+            {
+                toggle = true;
+                rgb1->set(8192,8192,8192,false, 10, 10, 0);
+            }
+
+        }
+    }
+}
+
+
+
+
 
 void start()
 {
+    auto sizeP = xPortGetFreeHeapSize();
+    auto lowestP = xPortGetMinimumEverFreeHeapSize();
+
     Fdom * fdom = new Fdom();
      
 
@@ -142,8 +190,74 @@ void start()
     can2->initFifo();
 
 
+    can1->startCAN(500000);
+    can2->startCAN(500000);
+
+
+
     // begin purple breathing
     rgb1->set(4000, 8192, 4000, true, 1500, 1000, 500);
+
+
+    // Configure interrupt pins
+    gpio_config_t io_conf = {};
+
+    // Int pin for CAN1
+    io_conf.intr_type = GPIO_INTR_POSEDGE;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = 1ULL << PIN_INT1;
+    io_conf.pull_down_en=GPIO_PULLDOWN_ENABLE;
+    io_conf.pull_up_en=GPIO_PULLUP_DISABLE;
+
+    gpio_config(&io_conf);
+
+    // same for int2
+    io_conf.pin_bit_mask = 1ULL << PIN_INT2;
+
+    gpio_config(&io_conf);
+
+    //create a queue to handle gpio event from isr
+    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    xTaskCreate(&gpio_task, "gpio_task", 2048, nullptr, 10, nullptr);
+
+    gpio_install_isr_service(0);
+
+    gpio_isr_handler_add((gpio_num_t)PIN_INT1, &gpio_isr_handler, (void*) PIN_INT1);
+    gpio_isr_handler_add((gpio_num_t)PIN_INT2, &gpio_isr_handler, (void*) PIN_INT2);
+
+
+    // button test
+    io_conf.mode = GPIO_MODE_INPUT;        //Input
+    io_conf.pin_bit_mask = ( 1ULL << (uint64_t) FRNT_USR_BTN);    //Set pin where button is connected
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE; //Disable pullup
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    gpio_config(&io_conf);
+
+    gpio_isr_handler_add((gpio_num_t)FRNT_USR_BTN, gpio_isr_handler, (void *)FRNT_USR_BTN);
+
+
+    // setup can select
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = (1ULL << CAN_MUX_SEL_A) | (1ULL << CAN_MUX_SEL_B);
+    gpio_config(&io_conf);
+
+    gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 1);
+    gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 0);
+
+
+    auto size = xPortGetFreeHeapSize();
+    auto lowest = xPortGetMinimumEverFreeHeapSize();
+
+
+    ESP_LOGI(LOG_TAG, "Pre Init memory. Available: 0x%08x Lowest: 0x%08x",sizeP, lowestP);
+
+    ESP_LOGI(LOG_TAG, "Post Init memory. Available: 0x%08x Lowest: 0x%08x",size, lowest);
+
+
+
+
 
 
 
@@ -159,4 +273,6 @@ extern "C" {
     {
         start();
     }
+
+
 }

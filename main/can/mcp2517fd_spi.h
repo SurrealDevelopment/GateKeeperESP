@@ -54,6 +54,9 @@ extern "C" {
 #define ADDR_C1FIFOCON2 0x068
 #define ADDR_C1FIFOSTA2 0x06C
 #define ADDR_C1FIFOUA2 0x070
+#define ADDR_C1FIFOCON3 0x074
+#define ADDR_C1FIFOSTA3 0x078
+#define ADDR_C1FIFOUA3 0x07C
 
 // Repeat until 1CF for a total of 31 FIFO regs
 
@@ -75,6 +78,9 @@ extern "C" {
 #define ADDR_CRC 0xE08
 #define ADDR_ECCCON 0xE0C
 #define ADDR_ECCSTAT 0xE10
+
+
+
 
 
 
@@ -159,7 +165,7 @@ typedef union _REG_CiCON {
         uint32_t WakeUpFilterEnable : 1; // Enable CAN Bus Line Wake-up Filter bit RW
         uint32_t WakeUpFilterTime : 2; // Selectable Wake-up Filter Time bits RW
         uint32_t Busy : 1; //  CAN Module is Busy bit R
-        uint32_t BitRateSwitchDisable : 1; // Bit Rate Switching Disable bit RW
+        uint32_t BitRateSwitchDisable : 1; // Bit Rate Switching Disable bit RW ( CAN FD)
         uint32_t unimplemented3 : 3;
         uint32_t RestrictReTxAttempts : 1; // Restrict Retransmission Attempts bit RW
         uint32_t EsiInGatewayMode : 1; // Transmit ESI in Gateway Mode bit RW
@@ -173,7 +179,7 @@ typedef union _REG_CiCON {
     } b;
     uint32_t word;
     uint8_t byte[4];
-} REG_C1CON;
+} REG_CiCON;
 
 
 // NOMINAL BIT TIME CONFIGURATION REGISTER 3-7

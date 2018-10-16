@@ -9,14 +9,14 @@ struct Pins {
 };
 
 struct Command {
-        int red; // brightness 0 = max, 8192 = min
-        int green;
-        int blue;
+        uint32_t red; // brightness 0 = max, 8192 = min
+        uint32_t green;
+        uint32_t blue;
         bool blink; // blink yes orn o
-        int onTime; // on time
-        int offTime; // off time
+        uint32_t onTime; // on time
+        uint32_t offTime; // off time
         // duty between 0 and 1000
-        int duty;
+        uint32_t duty;
         bool stop;
 };
 
@@ -151,7 +151,6 @@ static void rgbTask(void * param)
             xQueueReceive(pins->colorQueue, &curCommand, portMAX_DELAY);
 
         }
-        vTaskDelay(100/portTICK_PERIOD_MS);
 
     }
 
@@ -159,7 +158,7 @@ static void rgbTask(void * param)
 
     free(param);
 
-    vTaskDelete(NULL);
+    vTaskDelete(nullptr);
 }
 
 /**

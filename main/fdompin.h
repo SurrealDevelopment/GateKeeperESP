@@ -8,7 +8,9 @@ const int PIN_VSPI_SCK = 18; // SCK
 const int PIN_VSPI_CS0 = 5;
 
 const int PIN_INT1 = 35;
+
 const int PIN_INT2 = 16;
+
 
 const int RGB1_RED = 26;
 const int RGB1_GRN = 25;
