@@ -115,7 +115,7 @@ GattServer::GattServer(RgbControl * rgb, std::string name)
     pServer->setCallbacks(new MyServerCallbacks(rgb));
 
 
-    BLEService* pService = pServer->createService("91bad492-b950-4226-aa2b-4ede9fa42f59");
+    BLEService* pService = pServer->createService("95580c9a-c6f0-47e6-a2af-f71b7d16131f");
 
     BLECharacteristic* pCharacteristic = pService->createCharacteristic(
             BLEUUID("0d563a58-196a-48ce-ace2-dfec78acc814"),
@@ -136,6 +136,7 @@ GattServer::GattServer(RgbControl * rgb, std::string name)
     pService->start();
 
     BLEAdvertising* pAdvertising = pServer->getAdvertising();
+
     pAdvertising->addServiceUUID(BLEUUID(pService->getUUID()));
 
     BLESecurity *pSecurity = new BLESecurity();

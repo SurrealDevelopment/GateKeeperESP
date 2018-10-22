@@ -30,23 +30,76 @@ private:
         REG_CiFIFOCONm fifo1con;
         REG_CiFIFOCONm fifo2con;
         REG_CiFIFOCONm fifo3con;
+        REG_CiINT interrupt;
+
+        REG_CiFLTCONm fltcon[32]; // 32 filter controllers (8 bytes)
+
+        uint32_t flexRegRead;
+        uint32_t flexRegWrite;
 
 
     };
+private:
 
     /**
      * Initalises register record.
      */
     void initRegisterRecord();
 
-    const uint32_t HEAP_SIZE = 32; // heap size in bytes
+    /**
+     * Heap size in bytes
+     * largest is going to be one full size can fd frame.
+     * which is 8 control bytes, 4 time stamp  bytes, and 64 data bytes
+     */
+    const uint32_t HEAP_SIZE = 80; // heap size in bytes
+
     spi_device_handle_t mHandle;
 
     /** reads register at address non async */
-    uint32_t * readRegister(uint32_t address);
-    void writeRegister(uint32_t address); // write register with register buffer
-    void writeRegister(uint32_t address, uint32_t data);
-    void writeRegisterFromAddress(uint32_t address, void *data);
+    uint32_t * pollingReadRegister(uint32_t address);
+
+
+    /**
+     * Read specified number of bytes into the buffer
+     * @param address  address to read from
+     * @param bytes  number of bytes to read
+     */
+    void pollingReadAddress(uint32_t address, uint32_t bytes);
+
+
+
+    /**
+      * Read specified number of bytes into the buffer (interrupts)
+      * @param address  address to read from
+      * @param bytes  number of bytes to read
+      */
+    void intReadAddress(uint32_t address, uint32_t bytes);
+
+    /**
+     * Write register using specified data. Will copy data to write buffer and call
+     * @see writeRegister()
+     *
+     * @param address - address to write to
+     * @param data - data to write to in uint32_t form
+     */
+    void pollingWriteRegister(uint32_t address, uint32_t data);
+    void pollingWriteRegisterFromWriteBuffer(uint32_t address); // write register with buffer
+
+    /**
+     * Writes register from an address (rather than from buffer or etc).
+     * @param address - address to write
+     * @param data - pointer to data to write
+     * @param queue - if
+     */
+    void pollingWriteRegisterFromAddress(uint32_t address, void *data);
+
+    /**
+     * Writes from an address (rather than from buffer or etc).
+     * @param address - address to write
+     * @param data - pointer to data to write
+     * @param length length of data in bytes
+     */
+    void pollingWriteAddress(uint32_t address, void *data, uint32_t length);
 
 
     /**
@@ -71,9 +124,43 @@ private:
     uint32_t * mReadReg;
     RegisterRecord * mRegRecord;
 
+    /**
+     * Initalises secondary pins on device.
+     * @return success.
+     */
+    bool initPins();
 
-    // Keep a canController  register lying around
 
+    /**
+     * Initialises FIFO setup
+     * @return if init suceeded true=success
+     */
+    bool initFifo();
+
+
+
+
+    /**
+     * overwrite all filters with current buffer.
+     * This is probably faster than writing them piece by piece
+     * especially since we are regualrly rewritting all filters.
+     */
+    void writeAllFilters();
+
+    /**
+     * set filter status. Does not write.
+     * Call writeAllFilters when done
+     * @param filterNum
+     * @param status
+     */
+    void setFilterStatus(uint32_t filterNum, bool status);
+
+
+
+    void setFilter(uint32_t filterNum, uint32_t id, uint32_t mask, bool extended = false);
+
+    // quick function to disable all filters. No write
+    void disableAllFilters();
 
      
 
@@ -95,18 +182,7 @@ public:
     ~MCP2517FD();
 
 
-    /**
-     * Initalises secondary pins on device.
-     * @return success.
-     */
-    bool initPins();
 
-
-    /**
-     * Initialises FIFO setup
-     * @return if init suceeded true=success
-     */
-    bool initFifo();
 
     /**
      * Starts up CAN with specifiec Baud Rate
@@ -130,15 +206,25 @@ public:
 
 
     /**
-     * Starts up CAN with automatic Baud Rate
-     * @return success
+     * General init does a broad polling initalization on the device.
+     * Such as setting up the clock and other necesities.
+     * @return success or not
      */
-    bool startCANAutoBaud();
+    bool generalInit();
 
     /**
      * SEnd reset command
      */
     void reset();
+
+
+    /**
+     * listen to everyhting.
+     * Note this will reset filters
+     */
+    void listenAll();
+
+    void writeTest();
 
 
 };

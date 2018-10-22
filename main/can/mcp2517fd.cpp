@@ -6,9 +6,10 @@
 #include "mcp2517fd_spi.h"
 
 
-#define DEBUG_REGISTERS true
-#define CLOCK_RATE_MHZ 40 // clock to mcp in MHz
+#define DEBUG_REGISTERS false
+#define CLOCK_RATE_MHZ 20 // clock to mcp in MHz
 #define CAN_SAMPLE_POINT 0.8 // Sample point for CAN. Were going to use 80%
+#define TIMESTAMP 1 // if timestamps are being used
 
 static char LOG_TAG[] = "CANC";
 
@@ -22,6 +23,12 @@ void MCP2517FD::initRegisterRecord() {
     mRegRecord->fifo1con.word=0;
     mRegRecord->fifo2con.word=0;
     mRegRecord->fifo3con.word=0;
+
+    // set all filters to target fifo3
+    for (int i = 0; i < 32; i++)
+    {
+        mRegRecord->fltcon[i].b.targetFifo=3;
+    }
 }
 
 
@@ -76,71 +83,107 @@ void log_read_data_error(uint32_t address)
 }
 
 
-uint32_t * MCP2517FD::readRegister(uint32_t address) {
-    spi_transaction_t t = { };
-   
-    t.cmd = CMD_READ;
-    t.addr = address;
-    t.length = 32;
-    t.rx_buffer = mReadBuffer;;
-    t.tx_buffer = mWriteBuffer;
-
-    ESP_ERROR_CHECK(spi_device_polling_transmit(mHandle, &t));
+uint32_t * MCP2517FD::pollingReadRegister(uint32_t address) {
+    pollingReadAddress(address, 4); // one register is 4 bytes
     return mReadReg;
 }
 
+
+void MCP2517FD::pollingReadAddress(uint32_t address, uint32_t bytes) {
+    spi_transaction_t t = { };
+
+    t.cmd = CMD_READ;
+    t.addr = address;
+    t.length = bytes * 8;
+    t.rx_buffer = mReadBuffer;
+    t.tx_buffer = mWriteBuffer;
+
+    ESP_ERROR_CHECK(spi_device_polling_transmit(mHandle, &t));
+
+}
+
+void MCP2517FD::intReadAddress(uint32_t address, uint32_t bytes) {
+    spi_transaction_t t = { };
+
+    t.cmd = CMD_READ;
+    t.addr = address;
+    t.length = bytes * 8;
+    t.rx_buffer = mReadBuffer;
+    t.tx_buffer = mWriteBuffer;
+
+    ESP_ERROR_CHECK(spi_device_transmit(mHandle, &t));
+
+}
+
+
 // write 4 byte register at default write buffer
-void MCP2517FD::writeRegister(uint32_t address) {
-    return writeRegisterFromAddress(address, mWriteBuffer);
+void MCP2517FD::pollingWriteRegisterFromWriteBuffer(uint32_t address) {
+    return pollingWriteRegisterFromAddress(address, mWriteBuffer);
 
 }
 
 
 // overload to write register from data word
-void MCP2517FD::writeRegister(uint32_t address, uint32_t data) {
+void MCP2517FD::pollingWriteRegister(uint32_t address, uint32_t data) {
     
     // set data to buffer and call other function
     *(uint32_t *)mWriteBuffer = data;
-    return writeRegister(address);
+    return pollingWriteRegisterFromWriteBuffer(address);
 }
 
 // write register from pointer somewhere in a DMA buffer
-void MCP2517FD::writeRegisterFromAddress(uint32_t address, void *data) {
+void MCP2517FD::pollingWriteRegisterFromAddress(uint32_t address, void *data) {
 
-    spi_transaction_t t = { };
 
 
     /* Doing this apparently breaks the write. Avoid reading before writting. */
 #if DEBUG_REGISTERS
     ESP_LOGI(LOG_TAG, "Writting Registor 0x%04x with: 0x%08x", address, *(uint32_t *)data);
-    //uint32_t * reg = readRegister(address);
+    //uint32_t * reg = pollingReadRegister(address);
     //ESP_LOGI(LOG_TAG, "REGISTOR 0x%04x PRE: 0x%08x", address, *reg);
 #endif
+    pollingWriteAddress(address, data, 4);
+
+
+
+#if DEBUG_REGISTERS
+    uint32_t * reg2 = pollingReadRegister(address);
+    ESP_LOGI(LOG_TAG, "REGISTOR 0x%04x POST: 0x%08x",address, *reg2);
+#endif
+}
+
+void MCP2517FD::pollingWriteAddress(uint32_t address, void *data, uint32_t length) {
+    spi_transaction_t t = { };
+
     t.cmd = CMD_WRITE;
     t.addr = address;
-    t.length = 32;
+    t.length = 8*length;
     t.rx_buffer = mReadBuffer;
     t.tx_buffer = data;
 
     ESP_ERROR_CHECK(spi_device_polling_transmit(mHandle, &t));
 
 
-#if DEBUG_REGISTERS
-    uint32_t * reg2 = readRegister(address);
-    ESP_LOGI(LOG_TAG, "REGISTOR 0x%04x POST: 0x%08x",address, *reg2);
-#endif
+
 }
+
+
+
+
+
+
 
 void MCP2517FD::resumeInterrupts()
 {
-    writeRegister(ADDR_C1INT, 0xB8030000);
+    mRegRecord->interrupt.word = 0xB8030000;
+    pollingWriteRegister(ADDR_C1INT, 0xB8030000);
      //Enable Invalid Msg, Bus err, sys err, rx overflow, rx fifo, tx fifo interrupts
 
 }
 
 void MCP2517FD::stopInterrupts()
 {
-    writeRegister(ADDR_C1INT, 0);
+    pollingWriteRegister(ADDR_C1INT, 0);
 }
 
 bool MCP2517FD::initPins() {
@@ -152,10 +195,10 @@ bool MCP2517FD::initPins() {
     regOsc.b.SYSTEM_CLOCK_DIVISOR = 0;
     regOsc.b.CLOCK_OUTPUT_DIVISOR = 0; // set clock output to raw (no divsion)
 
-    writeRegister(ADDR_OSC, regOsc.word);
+    pollingWriteRegister(ADDR_OSC, regOsc.word);
 
     // read back and verify
-    auto reg2 = (REG_OSC *) readRegister(ADDR_OSC);
+    auto reg2 = (REG_OSC *) pollingReadRegister(ADDR_OSC);
 
     // check
     if (reg2->b.PLL_ENABLE != regOsc.b.PLL_ENABLE ||
@@ -173,15 +216,15 @@ bool MCP2517FD::initPins() {
     regIOCON.b.PM0 = 1; // standby and set as gpio
     regIOCON.b.LAT0 = 0; // latch to 0
     regIOCON.b.PM1 = 1;
-    regIOCON.b.LAT1 = 1;
+    regIOCON.b.LAT1 = 0; // this is shut down mode
     regIOCON.b.TRIS0 = 0;
     regIOCON.b.TRIS1 = 0;
 
 
-    writeRegister(ADDR_IOCON, regIOCON.word);
+    pollingWriteRegister(ADDR_IOCON, regIOCON.word);
 
 
-    auto ioconcheck = (REG_IOCON *) readRegister(ADDR_IOCON);
+    auto ioconcheck = (REG_IOCON *) pollingReadRegister(ADDR_IOCON);
 
 
     // check
@@ -231,9 +274,9 @@ bool MCP2517FD::initFifo() {
     tsCon.b.TimeBaseCounterPrescaler = 399; // 40 MHz clock. 10 microsecond takes 400 cycles, 0=1 so 399
     tsCon.b.TimeBaseCounterEnable = 1; // enable for now, not sure if we will use
 
-    writeRegister(ADDR_C1TSCON, tsCon.word);
+    pollingWriteRegister(ADDR_C1TSCON, tsCon.word);
 
-    auto tsConCheck = (REG_CiTSCON *) readRegister(ADDR_C1TSCON);
+    auto tsConCheck = (REG_CiTSCON *) pollingReadRegister(ADDR_C1TSCON);
 
     // check
     if (tsConCheck->b.TimeBaseCounterPrescaler != tsCon.b.TimeBaseCounterPrescaler ||
@@ -252,10 +295,10 @@ bool MCP2517FD::initFifo() {
     txcon->b.TxPriority = 0b00111; // midish priority
     txcon->b.TxEmptyInterruptEn = 0;
 
-    writeRegisterFromAddress(ADDR_C1TXQCON, &(txcon->word));
+    pollingWriteRegisterFromAddress(ADDR_C1TXQCON, txcon);
 
     // verify
-    auto txconcheck = (REG_CiTXQCON *) readRegister(ADDR_C1TXQCON);
+    auto txconcheck = (REG_CiTXQCON *) pollingReadRegister(ADDR_C1TXQCON);
 
 
     // check
@@ -277,10 +320,10 @@ bool MCP2517FD::initFifo() {
     fifoCon->b.TxRetransmissionAttempt = 2; // or 3 attempts
     fifoCon->b.TxTransmitPriority = 0b11111; // top priority
 
-    writeRegisterFromAddress(ADDR_C1FIFOCON1, fifoCon);
+    pollingWriteRegisterFromAddress(ADDR_C1FIFOCON1, fifoCon);
 
     // verify
-    auto fifoConCheck = (REG_CiFIFOCONm *) readRegister(ADDR_C1FIFOCON1);
+    auto fifoConCheck = (REG_CiFIFOCONm *) pollingReadRegister(ADDR_C1FIFOCON1);
 
 
     // check
@@ -302,10 +345,10 @@ bool MCP2517FD::initFifo() {
     fifoCon->b.FIFOSize = 2; // 2 messages (128 bytes)
     fifoCon->b.TxRetransmissionAttempt = 2; // or 3 attempts
     fifoCon->b.TxTransmitPriority = 0; // lowest priority
-    writeRegisterFromAddress(ADDR_C1FIFOCON2, fifoCon);
+    pollingWriteRegisterFromAddress(ADDR_C1FIFOCON2, fifoCon);
 
 
-    fifoConCheck = (REG_CiFIFOCONm *) readRegister(ADDR_C1FIFOCON2);
+    fifoConCheck = (REG_CiFIFOCONm *) pollingReadRegister(ADDR_C1FIFOCON2);
 
 
     // check
@@ -334,12 +377,12 @@ bool MCP2517FD::initFifo() {
     //fifoC->n.b.TxTransmitPriority = 0b11111; // top priority
     fifoCon->b.FIFOEmptyInterruptEn = 1; // enable interrupt if FIFO is full
     fifoCon->b.FIFONotFullInterruptEn = 1; // interrupt if something is in the FIFO
-    fifoCon->b.ReceiveMessageTimeStamps = 1; // enable time stamps on messages
+    fifoCon->b.ReceiveMessageTimeStamps = TIMESTAMP; // enable time stamps on messages
 
 
-    writeRegisterFromAddress((ADDR_C1FIFOCON3), fifoCon);
+    pollingWriteRegisterFromAddress((ADDR_C1FIFOCON3), fifoCon);
 
-    fifoConCheck = (REG_CiFIFOCONm *) readRegister(ADDR_C1FIFOCON3);
+    fifoConCheck = (REG_CiFIFOCONm *) pollingReadRegister(ADDR_C1FIFOCON3);
 
 
     // check
@@ -354,7 +397,9 @@ bool MCP2517FD::initFifo() {
         return false;
     }
 
-    return false;
+
+    // if we got here then it succeeded
+    return true;
 }
 
 bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
@@ -390,12 +435,12 @@ bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
     con->b.RequestOpMode = CAN_CONFIGURATION_MODE; // make sure its in config mode (it probably already is)
 
     // write controller
-    writeRegisterFromAddress(ADDR_C1CON, &(mRegRecord->canCon.word));
+    pollingWriteRegisterFromAddress(ADDR_C1CON, &(mRegRecord->canCon));
 
     con->b.RequestOpMode = 0;
 
     // check
-    if (!quickRegisterCheck(con->word, *readRegister(ADDR_C1CON)))
+    if (!quickRegisterCheck(con->word, *pollingReadRegister(ADDR_C1CON)))
     {
         log_write_data_error(ADDR_C1CON);
         return false;
@@ -443,10 +488,10 @@ bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
 
     // dont worry about data register
     // write bit timing
-    writeRegister(ADDR_C1NBTCFG, nominalBitTimeConfig.word);
+    pollingWriteRegister(ADDR_C1NBTCFG, nominalBitTimeConfig.word);
 
     // check
-    if (!quickRegisterCheck(nominalBitTimeConfig.word, *readRegister(ADDR_C1NBTCFG)))
+    if (!quickRegisterCheck(nominalBitTimeConfig.word, *pollingReadRegister(ADDR_C1NBTCFG)))
     {
         log_write_data_error(ADDR_C1NBTCFG);
         return false;
@@ -455,11 +500,11 @@ bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
 
     // Set mode
     if (listenOnly) {
-        if (!changeMode(CAN_CLASSIC_MODE))
+        if (!changeMode(CAN_LISTEN_ONLY_MODE))
             return false;
     }
     else {
-        if (!changeMode(CAN_LISTEN_ONLY_MODE))
+        if (!changeMode(CAN_CLASSIC_MODE))
             return false;
     }
 
@@ -569,20 +614,20 @@ bool MCP2517FD::startCANFD(uint32_t nominal_CAN_Baud_Rate, uint32_t data_CAN_BAU
 
 
     // write bit nominal timing
-    writeRegister(ADDR_C1NBTCFG, nominalBitTimeConfig.word);
+    pollingWriteRegister(ADDR_C1NBTCFG, nominalBitTimeConfig.word);
 
     // check
-    if (!quickRegisterCheck(nominalBitTimeConfig.word, *readRegister(ADDR_C1NBTCFG)))
+    if (!quickRegisterCheck(nominalBitTimeConfig.word, *pollingReadRegister(ADDR_C1NBTCFG)))
     {
         log_write_data_error(ADDR_C1NBTCFG);
         return false;
     }
 
     // write bit data timing
-    writeRegister(ADDR_C1DBTCFG, dataBitTimingConfig.word);
+    pollingWriteRegister(ADDR_C1DBTCFG, dataBitTimingConfig.word);
 
     // check
-    if (!quickRegisterCheck(dataBitTimingConfig.word, *readRegister(ADDR_C1DBTCFG)))
+    if (!quickRegisterCheck(dataBitTimingConfig.word, *pollingReadRegister(ADDR_C1DBTCFG)))
     {
         log_write_data_error(ADDR_C1DBTCFG);
         return false;
@@ -615,12 +660,12 @@ bool MCP2517FD::changeMode(uint32_t mode) {
     mRegRecord->canCon.b.RequestOpMode = mode;
 
     // write controller
-    writeRegisterFromAddress(ADDR_C1CON, &(mRegRecord->canCon.word));
+    pollingWriteRegisterFromAddress(ADDR_C1CON, &(mRegRecord->canCon));
 
     mRegRecord->canCon.b.RequestOpMode = 0;
 
     // check
-    if (!quickRegisterCheck((mRegRecord->canCon.word), *readRegister(ADDR_C1CON)))
+    if (!quickRegisterCheck((mRegRecord->canCon.word), *pollingReadRegister(ADDR_C1CON)))
     {
         ESP_LOGV(LOG_TAG, "Failed to change CAN Mode.");
         return false;
@@ -630,11 +675,21 @@ bool MCP2517FD::changeMode(uint32_t mode) {
 }
 
 /**
- * Interrupt logic
+ * Interrupt logic. Interrupts are going to use their own transactions
  */
 void MCP2517FD::interrupt() {
-    const auto reg = (REG_CiINT *) readRegister(ADDR_C1INT);
+
+    // get exclusive access on bus for quicker speeds
+    spi_device_acquire_bus(mHandle, portMAX_DELAY);
+
+    const auto reg = (REG_CiINT *) pollingReadRegister(ADDR_C1INT);
+
+
     const auto iReg = reg->word;
+
+
+
+    //ESP_LOGI(LOG_TAG, "INTERRUPT DETECTED! REGISTER: 0x%08x",(iReg));
 
 
     if (iReg & 1) // Tx FIFO
@@ -643,36 +698,217 @@ void MCP2517FD::interrupt() {
     }
     if (iReg & 2) // Rx FIFO
     {
-        // we only have one receive fifo, fifo3, so just read from that
-        // first step is get current TAIL of the FIFO using user address register
-        auto rxTail = *readRegister(ADDR_C1FIFOUA3);
+        // read all
+        auto statusReg = *pollingReadRegister(ADDR_C1FIFOSTA3);
 
-        // rxTail needs to be offset because hey why not even though its a 32 bit register
-        rxTail = rxTail + 0x400;
+        // if first bit is 1 there is content in FIFO
+        while (statusReg & 1)
+        {
+            // we only have one receive fifo, fifo3, so just read from that
+            // first step is get current TAIL of the FIFO using user address register
+
+            // rxTail needs to be offset because its not the absolute address
+            auto rxTail = *pollingReadRegister(ADDR_C1FIFOUA3); // no reg cast needed. This is the address
+
+            rxTail = rxTail + 0x400;
+
+            // read whole fifo message object since its probably faster than constant switching
+#if TIMESTAMP==0
+            pollingReadAddress(rxTail, 72); // 64 data bytes + 8 initial
+#else
+            pollingReadAddress(rxTail, 76); // 64 data bytes + 8 initial + 4 timestamp
+#endif
+            //auto regs = (uint32_t *)mReadBuffer;
+
+            auto data32 = (uint32_t *)mReadBuffer;
+
+            auto timestamp = data32[2];
+            auto test = data32[3];
 
 
+            uint32_t id = data32[0] & 0x1FFFFFFF;
+
+            if (id == 0x0c9)
+            {
+                // because reverse endianess
+                uint32_t rpm = (data32[3] & 0x00FF0000) >> 16;
+                rpm = rpm | (data32[3] & 0x0000FF00);
+                auto rpmf = (rpm)/4.0;
+                ESP_LOGI(LOG_TAG, "Engine RPM from 0x%04x is %f",id, rpmf);
+
+            }
+
+
+            //ESP_LOGI(LOG_TAG, "New CAN Message AT FIFO 0x%04x Status: 0x%08x", rxTail, statusReg);
+            //ESP_LOGI(LOG_TAG, "Byte 2: 0x%08x",(bytes[1]));
+            //ESP_LOGI(LOG_TAG, "Byte 3: 0x%08x",(bytes[2]));
+            //ESP_LOGI(LOG_TAG, "Byte 4: 0x%08x",(bytes[3]));
+
+            // set uinc of FIFOCON to increment the FIFO because we read the message
+            mRegRecord->fifo3con.b.IncrementHeadTail = 1;
+            pollingWriteRegisterFromAddress(ADDR_C1FIFOCON3, &(mRegRecord->fifo3con));
+            mRegRecord->fifo3con.b.IncrementHeadTail = 0;
+
+
+
+
+
+
+
+
+            // get status again
+            statusReg = *pollingReadRegister(ADDR_C1FIFOSTA3);
+
+        }
 
     }
     if (iReg & (1<<11)) // Rx FIFO overflow
     {
-
+        ESP_LOGV(LOG_TAG, "FIFO OVERFLOW");
     }
     if (iReg & (1<<12)) // system error
     {
+        ESP_LOGV(LOG_TAG, "SYSTEM ERROR");
 
     }
     if (iReg & (1<<13)) // CAN error
     {
+        ESP_LOGW(LOG_TAG, "CAN ERROR");
 
     }
     if (iReg & (1<<14)) // WAKE UP
     {
+        ESP_LOGI(LOG_TAG, "HIGH VOLTAGE WAKE UP");
 
     }
     if (iReg & (1<<15)) // invalid msg
     {
+        ESP_LOGW(LOG_TAG, "INVALID MESSAGE");
+    }
 
+    // write back INT acking the interrupt
+    pollingWriteRegisterFromAddress(ADDR_C1INT, &(mRegRecord->interrupt));
+
+
+}
+
+bool MCP2517FD::generalInit() {
+
+    initRegisterRecord(); // make sure register records are reset
+
+    bool failFlag = true;
+    // get exclusive access on bus for quicker speeds
+    spi_device_acquire_bus(mHandle, portMAX_DELAY);
+
+    reset();
+    vTaskDelay(200/portTICK_RATE_MS); // give it 50 ms of time for reset.
+
+    if (!initPins()) failFlag = false;
+    // continue anyway even if we fail just in case
+    if (!initFifo()) failFlag = false;
+
+    // reset filters which will target fifo3
+    writeAllFilters();
+
+    // release bus
+    spi_device_release_bus(mHandle);
+
+    return failFlag;
+}
+
+void MCP2517FD::listenAll() {
+    disableAllFilters();
+    writeAllFilters();
+    setFilter(0, 0x0c9, 0x7ff, false);
+    setFilterStatus(0, true);
+    writeAllFilters();
+}
+
+void MCP2517FD::writeAllFilters() {
+    // overwrite all filters with current.
+    // each filter is 1 byte so write 4 bytes since there are 32
+    pollingWriteAddress(ADDR_C1FLTCON0, &(mRegRecord->fltcon), 32 / 4);
+}
+
+void MCP2517FD::disableAllFilters() {
+    // set all filters to target fifo3
+    for (auto && item : mRegRecord->fltcon)
+    {
+        item.b.en=0;
     }
 }
 
 
+
+// sets mask and id filter of filter num
+// NOTE filter must be DISABLEd for this to work
+// Does not enable filter
+void MCP2517FD::setFilter(uint32_t filterNum, uint32_t id, uint32_t mask, bool extended) {
+    if (filterNum > 31) return; // sanity
+
+    if (extended) id |= 1 << 30; // set extended bit (only will accept extended)
+
+    pollingWriteRegister(ADDR_C1FLTOBJ0 + (FLT_OBJMASK_SPACING * filterNum), id);
+
+    mask |= 1 << 30; // insures mask follows extended bit
+
+    pollingWriteRegister(ADDR_C1MASK0 + (FLT_OBJMASK_SPACING * filterNum), mask);
+}
+
+void MCP2517FD::setFilterStatus(uint32_t filterNum, bool status) {
+    if (filterNum > 31) return; // sanity
+
+    if (status)
+        mRegRecord->fltcon[filterNum].b.en=1;
+    else
+        mRegRecord->fltcon[filterNum].b.en=0;
+
+}
+
+void MCP2517FD::writeTest() {
+
+    auto status = (REG_CiFIFOSTAm *) pollingReadRegister(ADDR_C1TXQSTA); // med pri
+
+
+    // same story as recieving frames
+    while (status->word & 1)
+    {
+
+        vTaskDelay(100/portTICK_RATE_MS);
+
+        auto addr = *pollingReadRegister(ADDR_C1TXQUA); // med pri
+
+        addr = addr + 0x400; // offset
+
+
+        ESP_LOGI(LOG_TAG, "ADDR: 0x%08x",addr);
+
+
+        auto buf = (TRANSMIT_MESSAGE_OBJECT *)mWriteBuffer;
+
+        buf->prim.word1=0;
+        buf->prim.word2=0;
+        buf->control.standardIdentifier=0x7E0;
+        buf->control.ExtesnionFlag=0;
+        buf->control.FDF = 0;
+        buf->control.DLC=8;
+
+        buf->prim.data[0] = 01;
+
+
+        pollingWriteAddress(addr, mWriteBuffer, 64); // 64 bytes + 8 control
+
+        // set uinc of FIFOCON to increment the FIFO because we transmit the message
+        mRegRecord->fifo0con.b.IncrementHeadTail = 1;
+        mRegRecord->fifo0con.b.TxRequest = 1;
+
+        pollingWriteRegisterFromAddress(ADDR_C1TXQCON, &(mRegRecord->fifo0con));
+        mRegRecord->fifo0con.b.IncrementHeadTail = 0;
+        mRegRecord->fifo0con.b.TxRequest = 0;
+
+
+        status = (REG_CiFIFOSTAm *) pollingReadRegister(ADDR_C1TXQSTA);
+    }
+
+
+}

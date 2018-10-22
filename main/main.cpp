@@ -67,6 +67,19 @@ static void gpio_task(void* arg)
                 rgb1->set(8192,8192,8192,false, 10, 10, 0);
             }
 
+            if (io_num == PIN_INT1)
+            {
+                // invoke can1 interrupt
+                can1->interrupt();
+
+            }
+            else if (io_num == PIN_INT2)
+            {
+                // invoke can2 interrupt
+                can2->interrupt();
+            }
+
+
         }
     }
 }
@@ -169,29 +182,16 @@ void start()
     can2 = new MCP2517FD(handle2);
     //can2 = new MCP2517FD(handle2);
 
-    ESP_LOGI(LOG_TAG, "Resetting...");
 
-    can1->reset();
-    can2->reset();
+    if (!can1->generalInit())
+    {
+        ESP_LOGW(LOG_TAG, "CAN 1 Init Fail!");
+    }
+     if (!can2->generalInit())
+     {
+         ESP_LOGW(LOG_TAG, "CAN 2 Init Fail!");
 
-    vTaskDelay(200/portTICK_RATE_MS); // delay for reset
-    ESP_LOGI(LOG_TAG, "Reset...");
-    ESP_LOGI(LOG_TAG, "Init pins...");
-
-    can1->initPins();
-
-    can2->initPins();
-
-    ESP_LOGI(LOG_TAG, "Init FIFO...");
-
-
-
-    can1->initFifo();
-    can2->initFifo();
-
-
-    can1->startCAN(500000);
-    can2->startCAN(500000);
+     }
 
 
 
@@ -203,7 +203,7 @@ void start()
     gpio_config_t io_conf = {};
 
     // Int pin for CAN1
-    io_conf.intr_type = GPIO_INTR_POSEDGE;
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = 1ULL << PIN_INT1;
     io_conf.pull_down_en=GPIO_PULLDOWN_ENABLE;
@@ -256,13 +256,18 @@ void start()
     ESP_LOGI(LOG_TAG, "Post Init memory. Available: 0x%08x Lowest: 0x%08x",size, lowest);
 
 
+    // test
+
+    can1->startCAN(500000);
 
 
+    can1->listenAll();
 
+    //can1->writeTest();
 
+    can2->startCAN(500000);
 
-
-
+    can2->listenAll();
 
 
 }

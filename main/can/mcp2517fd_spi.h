@@ -58,7 +58,7 @@ extern "C" {
 #define ADDR_C1FIFOSTA3 0x078
 #define ADDR_C1FIFOUA3 0x07C
 
-// Repeat until 1CF for a total of 31 FIFO regs
+// Repeat until 1CF for a total of 32 FIFO regs
 
 #define ADDR_C1FLTCON0 0x1D0
 #define ADDR_C1FLTCON1 0x1D4
@@ -68,6 +68,14 @@ extern "C" {
 #define ADDR_C1FLTCON5 0x1E4
 #define ADDR_C1FLTCON6 0x1E8
 #define ADDR_C1FLTCON7 0x1EC
+
+#define FLTCON_SIZE 1 // flt con size in bytes
+
+
+#define ADDR_C1FLTOBJ0 0x1F0
+#define ADDR_C1MASK0 0x1F4
+#define FLT_OBJMASK_SPACING 0x08
+
 
 
 
@@ -420,7 +428,7 @@ typedef union _REG_CiTXQCON {
         uint32_t TxAttemptsExhaustedInterruptEn : 1;
         uint32_t RES3 : 2;
         uint32_t TxEnable : 1;
-        uint32_t UIncrementHead : 1;
+        uint32_t IncrementHeadTail : 1;
         uint32_t TxRequest : 1;
         uint32_t FifoReset : 1;
         uint32_t RES4 : 5;
@@ -466,6 +474,54 @@ typedef union _REG_CiTXQUA{
     uint32_t word;
     uint8_t byte[4];
 } REG_CiTXQUA;
+
+
+
+//  Buffer control register (byte)
+typedef union _REG_CiFLTCONm{
+
+    struct {
+
+        uint32_t targetFifo: 5;
+        uint32_t res: 2;
+        uint32_t  en: 1;
+
+    } b;
+    uint8_t byte;
+} REG_CiFLTCONm;
+
+
+// transmission message object (64 byte payload max)
+// made to be cast to transmit buffer
+typedef union _TRANSMIT_MESSAGE_OBJECT {
+    struct {
+
+        uint32_t standardIdentifier : 11;
+        uint32_t extendedIdentifier: 10;
+        uint32_t SID11 : 1;
+        uint32_t RES1 : 2;
+
+        // T1
+        uint32_t DLC : 4;
+        uint32_t ExtesnionFlag : 1;
+        uint32_t RemoteTransmissionRequest : 1; // not used in can fd
+        uint32_t BitRateSwitch : 1; // if data bit rate switching should be used
+        uint32_t FDF : 1; // distinguish if FD frame
+        uint32_t ESI : 1; // error status indiciator
+        uint32_t Sequence: 7;
+        uint32_t RES2 : 16;
+        uint8_t data[64];
+
+
+    } control;
+    struct {
+       uint32_t word1;
+       uint32_t word2;
+       uint8_t data[64];
+
+    } prim;
+} TRANSMIT_MESSAGE_OBJECT;
+
 
 
 
