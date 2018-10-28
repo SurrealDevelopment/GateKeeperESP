@@ -1,3 +1,18 @@
+/**
+ *  Copyright (C) 2018 Surreal Development LLC
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include "gattserver.h"
 #include "esp_gap_ble_api.h"
 #include "fdompin.h"
@@ -128,7 +143,7 @@ GattServer::GattServer(RgbControl * rgb, std::string name)
     pCharacteristic->setCallbacks(new bleCharacteristicCallback(rgb1));
     pCharacteristic->setValue("Hello World!");
 
-    BLE2902* p2902Descriptor = new BLE2902();
+    auto p2902Descriptor = new BLE2902();
     p2902Descriptor->setNotifications(true);
     pCharacteristic->addDescriptor(p2902Descriptor);
     p2902Descriptor->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
@@ -139,7 +154,7 @@ GattServer::GattServer(RgbControl * rgb, std::string name)
 
     pAdvertising->addServiceUUID(BLEUUID(pService->getUUID()));
 
-    BLESecurity *pSecurity = new BLESecurity();
+    auto pSecurity = new BLESecurity();
     pSecurity->setKeySize();
     pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
     pSecurity->setCapability(ESP_IO_CAP_NONE);

@@ -1,3 +1,18 @@
+/**
+ *  Copyright (C) 2018 Surreal Development LLC
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #ifndef _MCP_2517FD_H_
 #define _MCP_2517FD_H_
 
@@ -32,7 +47,7 @@ private:
         REG_CiFIFOCONm fifo3con;
         REG_CiINT interrupt;
 
-        REG_CiFLTCONm fltcon[32]; // 32 filter controllers (8 bytes)
+        REG_CiFLTCONm fltcon[32]; // 32 filter controllers (8 bytes). We keep a local copy of these.
 
         uint32_t flexRegRead;
         uint32_t flexRegWrite;
@@ -40,6 +55,8 @@ private:
 
     };
 private:
+
+    uint32_t filterStackCount = 0;
 
     /**
      * Initalises register record.

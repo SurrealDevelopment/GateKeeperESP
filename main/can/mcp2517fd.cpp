@@ -1,3 +1,18 @@
+/**
+ *  Copyright (C) 2018 Surreal Development LLC
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include <can/mcp2517fd.h>
 #include <cstring>
 #include <can/mcp2517fd_spi.h>
@@ -15,6 +30,18 @@ static char LOG_TAG[] = "CANC";
 
 
 
+/**
+ * Implementation for mcp2517fd low level spi
+ *
+ * Note there are some annoying things with how the esp32 handles spi.
+ * Since we are using DMA we can only read/write in increments of 32 bits or 4 bytes.
+ * We must also always do a full duplex transaction even though the mcp2517fd is a
+ * half duplex device. For the most part is fine but not following this rule can cause
+ * the SPI interface to become glitched until restart.
+ */
+
+
+
 
 // init everything in reg record to 0 to be safe.
 void MCP2517FD::initRegisterRecord() {
@@ -23,6 +50,8 @@ void MCP2517FD::initRegisterRecord() {
     mRegRecord->fifo1con.word=0;
     mRegRecord->fifo2con.word=0;
     mRegRecord->fifo3con.word=0;
+
+
 
     // set all filters to target fifo3
     for (int i = 0; i < 32; i++)
@@ -175,9 +204,16 @@ void MCP2517FD::pollingWriteAddress(uint32_t address, void *data, uint32_t lengt
 
 void MCP2517FD::resumeInterrupts()
 {
-    mRegRecord->interrupt.word = 0xB8030000;
-    pollingWriteRegister(ADDR_C1INT, 0xB8030000);
-     //Enable Invalid Msg, Bus err, sys err, rx overflow, rx fifo, tx fifo interrupts
+    mRegRecord->interrupt.b.InvalidMessage=1; // Invalid MSG Interrupt
+    mRegRecord->interrupt.b.BusWakeUp=1; // BUS WAKE UP for waking on low power
+    mRegRecord->interrupt.b.CANBusError = 1; // CAN Bus error
+    mRegRecord->interrupt.b.SystemError = 1; //
+    mRegRecord->interrupt.b.ReceiveObjectOverflow = 1; // RxOverflow
+    mRegRecord->interrupt.b.RxFIFO = 1; // recieve fifo
+    mRegRecord->interrupt.b.TxFIFO = 1; // TX Fifo
+
+
+    pollingWriteRegisterFromAddress(ADDR_C1INT, mRegRecord);
 
 }
 
@@ -831,7 +867,6 @@ void MCP2517FD::writeAllFilters() {
 }
 
 void MCP2517FD::disableAllFilters() {
-    // set all filters to target fifo3
     for (auto && item : mRegRecord->fltcon)
     {
         item.b.en=0;
