@@ -20,6 +20,7 @@
 #include "driver/spi_master.h"
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include<bits/stdc++.h>
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/FreeRTOS.h"
@@ -49,8 +50,7 @@ private:
 
         REG_CiFLTCONm fltcon[32]; // 32 filter controllers (8 bytes). We keep a local copy of these.
 
-        uint32_t flexRegRead;
-        uint32_t flexRegWrite;
+        std::pair<uint32_t ,uint32_t> fltAddrMask[32];
 
 
     };
@@ -162,7 +162,7 @@ private:
      * This is probably faster than writing them piece by piece
      * especially since we are regualrly rewritting all filters.
      */
-    void writeAllFilters();
+    void writeAllFiltersStatus();
 
     /**
      * set filter status. Does not write.
@@ -179,7 +179,11 @@ private:
     // quick function to disable all filters. No write
     void disableAllFilters();
 
-     
+    void optimizeFilters();
+    bool optimizeFiltersStep(); // recursive optimize filter step
+
+
+
 
 
 public:
@@ -217,9 +221,10 @@ public:
      *
      * @param nominal_CAN_Baud_Rate nominal can rate (usually lower than data)
      * @param data_CAN_BAUD_Rate higher speed data rate
+     * @param listenOnly - if CAN should start in listen only mode
      * @return success
      */
-    bool startCANFD(uint32_t nominal_CAN_Baud_Rate, uint32_t data_CAN_BAUD_Rate);
+    bool startCANFD(uint32_t nominal_CAN_Baud_Rate, uint32_t data_CAN_BAUD_Rate, bool listenOnly = false);
 
 
     /**
@@ -240,6 +245,33 @@ public:
      * Note this will reset filters
      */
     void listenAll();
+
+    /**
+     * Tells mcp device to start listening to specified address
+     * MCP has 32 filters for listening and will automatically try to optimize the filters.
+     * For example listening on 7E8..7EF will be optimized to a single filter
+     * But listening to 7E8 and 7EA will be two filters
+     *
+     * Optimizations are delayed to absolute latest possible time. The optimization stage will be
+     * similar to a context switch so avoid churning too many addresses.
+     *
+     * If you think you will exceed the 32 filter count often consider using listenAll in lieu of
+     * listenTo.
+     *
+     * @param address to listen to
+     * @return success
+     */
+    bool listenTo(uint32_t address, bool extended);
+
+
+    /**
+     * Tells mcp device to stop listening to specified address
+     *
+     * Will search for address and, if found, remove and reoptimize as needed.
+     *
+     * @param address to stop listening  to
+     */
+    void stopListeningTo(uint32_t, bool extended);
 
     void writeTest();
 

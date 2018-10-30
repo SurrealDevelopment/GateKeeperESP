@@ -440,27 +440,26 @@ bool MCP2517FD::initFifo() {
 
 bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
 
-
-
+    // Insanely unlikely anything above 1mbit is going to work outside of
+    // CAN-FD so return false
     if (CAN_Baud_Rate > 1000000)
     {
         ESP_LOGV(LOG_TAG, "CAN Baud Rate Too High!");
         return false;
     }
 
-    // stop interrupts for now
+    // stop interrupts for now just to stay on the safe side
     stopInterrupts();
 
-    // Can control register
 
-    // reset
+    // Reference to CAN Control Register
     auto con = &(mRegRecord->canCon);
 
-    con->b.DNetFilterCount = 0; // dont use
-    con->b.IsoCrcEnable = 0; // Use CRC for can-fd (useless here)
+    con->b.DNetFilterCount = 0; // basically using data bytes for id. We're not doing that
+    con->b.IsoCrcEnable = 0; // This is a rule to patch issues with CAN CRC. Unlikely old CAN uses this so no
     con->b.ProtocolExceptionEventDisable = 0; // Nah
     con->b.WakeUpFilterEnable = 1; // need wake up for low power use
-    con->b.WakeUpFilterTime = 2; // min time
+    con->b.WakeUpFilterTime = 2; // min time for can wakeup
     con->b.BitRateSwitchDisable = 1; // No FD
     con->b.RestrictReTxAttempts = 1;
     con->b.EsiInGatewayMode = 0;
@@ -483,7 +482,7 @@ bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
     }
 
 
-    // This register deals with bit itming
+    // This register deals with bit timing
     // see each segment here
     // https://en.wikipedia.org/wiki/CAN_bus
 
@@ -513,7 +512,7 @@ bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
         return false;
     }
 
-    nominalBitTimeConfig.b.TimeSegment1 = a - 1; // this is prop+ Phase segment 1, minus 1 due to calc
+    nominalBitTimeConfig.b.TimeSegment1 = a - 1; // this is prop + Phase segment 1. minus 1 due to calc
     nominalBitTimeConfig.b.TimeSegment2 = b - 1; // Phase segment 2 only
 
     // from calculating Time Segments with SYS CLOCK we dont need to calculate that here
@@ -549,7 +548,7 @@ bool MCP2517FD::startCAN(uint32_t CAN_Baud_Rate, bool listenOnly) {
     return true;
 }
 
-bool MCP2517FD::startCANFD(uint32_t nominal_CAN_Baud_Rate, uint32_t data_CAN_BAUD_Rate) {
+bool MCP2517FD::startCANFD(uint32_t nominal_CAN_Baud_Rate, uint32_t data_CAN_BAUD_Rate, bool listenOnly) {
 
 
 
@@ -670,25 +669,20 @@ bool MCP2517FD::startCANFD(uint32_t nominal_CAN_Baud_Rate, uint32_t data_CAN_BAU
     }
 
 
-    if (!changeMode(CAN_CONFIGURATION_MODE))
-        return false;
-
+    // Set mode as final step
+    if (listenOnly) {
+        if (!changeMode(CAN_LISTEN_ONLY_MODE))
+            return false;
+    }
+    else {
+        if (!changeMode(CAN_NORMAL_MODE))
+            return false;
+    }
 
     resumeInterrupts();
 
-
-
-
     return false;
 }
-
-
-
-
-
-
-
-
 
 
 
@@ -722,8 +716,6 @@ void MCP2517FD::interrupt() {
 
 
     const auto iReg = reg->word;
-
-
 
     //ESP_LOGI(LOG_TAG, "INTERRUPT DETECTED! REGISTER: 0x%08x",(iReg));
 
@@ -762,6 +754,8 @@ void MCP2517FD::interrupt() {
             auto test = data32[3];
 
 
+
+
             uint32_t id = data32[0] & 0x1FFFFFFF;
 
             if (id == 0x0c9)
@@ -773,6 +767,10 @@ void MCP2517FD::interrupt() {
                 ESP_LOGI(LOG_TAG, "Engine RPM from 0x%04x is %f",id, rpmf);
 
             }
+
+
+            ESP_LOGI(LOG_TAG, "RX from 0x%04x 0x%04x%04x",id, data32[3], data32[4]);
+
 
 
             //ESP_LOGI(LOG_TAG, "New CAN Message AT FIFO 0x%04x Status: 0x%08x", rxTail, statusReg);
@@ -787,37 +785,32 @@ void MCP2517FD::interrupt() {
 
 
 
-
-
-
-
-
             // get status again
             statusReg = *pollingReadRegister(ADDR_C1FIFOSTA3);
 
         }
 
     }
-    if (iReg & (1<<11)) // Rx FIFO overflow
+    if (iReg & 2048) // Rx FIFO overflow
     {
         ESP_LOGV(LOG_TAG, "FIFO OVERFLOW");
     }
-    if (iReg & (1<<12)) // system error
+    if (iReg & 4096) // system error
     {
         ESP_LOGV(LOG_TAG, "SYSTEM ERROR");
 
     }
-    if (iReg & (1<<13)) // CAN error
+    if (iReg & 8192) // CAN error
     {
         ESP_LOGW(LOG_TAG, "CAN ERROR");
 
     }
-    if (iReg & (1<<14)) // WAKE UP
+    if (iReg & 0x4000) // WAKE UP
     {
         ESP_LOGI(LOG_TAG, "HIGH VOLTAGE WAKE UP");
 
     }
-    if (iReg & (1<<15)) // invalid msg
+    if (iReg & 0x8000) // invalid msg
     {
         ESP_LOGW(LOG_TAG, "INVALID MESSAGE");
     }
@@ -844,7 +837,7 @@ bool MCP2517FD::generalInit() {
     if (!initFifo()) failFlag = false;
 
     // reset filters which will target fifo3
-    writeAllFilters();
+    writeAllFiltersStatus();
 
     // release bus
     spi_device_release_bus(mHandle);
@@ -852,15 +845,17 @@ bool MCP2517FD::generalInit() {
     return failFlag;
 }
 
+
+
 void MCP2517FD::listenAll() {
     disableAllFilters();
-    writeAllFilters();
+    writeAllFiltersStatus();
     setFilter(0, 0x0c9, 0x7ff, false);
     setFilterStatus(0, true);
-    writeAllFilters();
+    writeAllFiltersStatus();
 }
 
-void MCP2517FD::writeAllFilters() {
+void MCP2517FD::writeAllFiltersStatus() {
     // overwrite all filters with current.
     // each filter is 1 byte so write 4 bytes since there are 32
     pollingWriteAddress(ADDR_C1FLTCON0, &(mRegRecord->fltcon), 32 / 4);
@@ -883,6 +878,8 @@ void MCP2517FD::setFilter(uint32_t filterNum, uint32_t id, uint32_t mask, bool e
 
     if (extended) id |= 1 << 30; // set extended bit (only will accept extended)
 
+#include<bits/stdc++.h>#include<bits/stdc++.h
+
     pollingWriteRegister(ADDR_C1FLTOBJ0 + (FLT_OBJMASK_SPACING * filterNum), id);
 
     mask |= 1 << 30; // insures mask follows extended bit
@@ -899,6 +896,157 @@ void MCP2517FD::setFilterStatus(uint32_t filterNum, bool status) {
         mRegRecord->fltcon[filterNum].b.en=0;
 
 }
+
+/**
+ * Function for optimizing filters
+ */
+void MCP2517FD::optimizeFilters()
+{
+    // set disabled filter addrs to max
+    for (int i = 0; i < 32; i++)
+    {
+        const auto flt = &(mRegRecord->fltcon[i]);
+        uint32_t * addr= &(mRegRecord->fltAddrMask[i].first);
+
+        if (flt->b.en)
+        {
+            *addr = UINT32_MAX;
+        }
+    }
+    while (optimizeFiltersStep()); // repeat step as long as true
+
+}
+
+bool MCP2517FD::optimizeFiltersStep() {
+    // sort
+    std::sort(std::begin(mRegRecord->fltAddrMask), std::end(mRegRecord->fltAddrMask));
+
+    // count size
+    for (filterStackCount = 0; filterStackCount < 32; filterStackCount++)
+    {
+        if (mRegRecord->fltAddrMask[filterStackCount].first == UINT32_MAX)
+            break;
+    }
+
+    bool change = false;
+    // merge
+    for (int i = 0; i < filterStackCount -1; i++)
+    {
+        auto fltA = &(mRegRecord->fltAddrMask[i]);
+        auto fltB = &(mRegRecord->fltAddrMask[i+1]);
+        auto calc = fltA->first ^ fltB->first;
+        // check octa
+        if ((fltA->second & 0x7FF) == 0x7F8 && (fltB->second & 0x7FF) == 0x7F8 && calc == 4)
+        {
+            // upgrade to octa
+            fltB->first=fltA->first;
+            fltB->second=0x7F0;
+            fltA->first=UINT32_MAX; // insure to make flt A irrelevant
+            change = true;
+            // making fltA irrelevant means we can continue on the algo
+        }
+        else if ((fltA->second & 0x7FF) == 0x7FE && (fltB->second & 0x7FF) == 0x7FE && calc == 2)
+        {
+            // upgrade to quad
+            fltB->first=fltA->first;
+            fltB->second=0x7F8;
+            fltA->first=UINT32_MAX; // insure to make flt A irrelevant
+            change = true;
+
+        }
+        else if ((fltA->second & 0x7FF) == 0x7FF && (fltB->second & 0x7FF) == 0x7FF && calc == 1)
+        {
+            // upgrade to pair
+            fltB->first=fltA->first;
+            fltB->second=0x7FE;
+            fltA->first=UINT32_MAX; // insure to make flt A irrelevant
+            change = true;
+
+        }
+        else
+        {
+            // do nothing, loners
+        }
+    }
+    return change;
+
+
+}
+
+bool MCP2517FD::listenTo(uint32_t address, bool extended) {
+
+
+    // check if in filters already
+    for (int i = 0; i < filterStackCount; i++)
+    {
+        const auto flt= &(mRegRecord->fltcon[i]);
+        uint32_t * mask= &(mRegRecord->fltAddrMask[i].second);
+        uint32_t * addr= &(mRegRecord->fltAddrMask[i].first);
+        uint32_t calc = address & *mask;  // if address in filter calc will == addr
+
+
+        if (flt->b.en && calc == *addr)
+        {
+            return true; // do nothing just return
+        }
+    }
+
+    // check if filter exists
+    if (filterStackCount > 31)
+    {
+        // try optimizing filters to get it under 31
+        optimizeFilters();
+        if (filterStackCount > 31)
+        {
+            ESP_LOGW(LOG_TAG, "Filter Overflow");
+            return false;
+        }
+    }
+
+    // add filter
+    setFilter(filterStackCount, address, 0x7FF, false); // @TODO accept extended addressing
+    setFilterStatus(filterStackCount, true);
+    filterStackCount++;
+    return false;
+}
+
+void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
+    // stop listening is going to be a lot harder than simply listening
+    // reason being we need to deal with splitting filters up.
+
+    // check if in filters already
+    for (int i = 0; i < filterStackCount; i++)
+    {
+        const auto flt= &(mRegRecord->fltcon[i]);
+        uint32_t * mask= &(mRegRecord->fltAddrMask[i].second);
+        uint32_t * addr= &(mRegRecord->fltAddrMask[i].first);
+        uint32_t calc = address & *mask;  // if address in filter calc will == addr
+
+
+        if (flt->b.en && calc == *addr)
+        {
+            uint32_t range = (*mask ^ 0x7FF) + 1; // xor will be range
+            // filter found
+            // disable filter
+            setFilterStatus(i, false);
+            writeAllFiltersStatus();
+            for (uint32_t b = *addr; b < *addr + range; b++)
+            {
+                // If is target filter skip else add filter
+                if (b == address)
+                    continue;
+
+                listenTo(b, extended);
+            }
+        }
+    }
+
+    // else it doesnt exist just return
+    return;
+
+}
+
+
 
 void MCP2517FD::writeTest() {
 
@@ -947,3 +1095,4 @@ void MCP2517FD::writeTest() {
 
 
 }
+

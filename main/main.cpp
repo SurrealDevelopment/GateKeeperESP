@@ -65,22 +65,11 @@ static void IRAM_ATTR gpio_isr_handler(void * arg)
 
 static void gpio_task(void* arg)
 {
-    bool toggle = false;
+    bool toggle = true;
     uint32_t io_num;
-    while(1){
+    while(toggle){
         if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-            if (toggle)
-            {
 
-                toggle = false;
-                rgb1->set(3000,8192,8192,false, 10, 10, 0);
-
-            }
-            else
-            {
-                toggle = true;
-                rgb1->set(8192,8192,8192,false, 10, 10, 0);
-            }
 
             if (io_num == PIN_INT1)
             {
@@ -93,8 +82,11 @@ static void gpio_task(void* arg)
                 // invoke can2 interrupt
                 can2->interrupt();
             }
-
-
+            else if (io_num == -1)
+            {
+                // allows us to stop the gpio task if for whatever reason we need to.
+                toggle = false;
+            }
         }
     }
 }
@@ -258,8 +250,11 @@ void start()
     io_conf.pin_bit_mask = (1ULL << CAN_MUX_SEL_A) | (1ULL << CAN_MUX_SEL_B);
     gpio_config(&io_conf);
 
-    gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 1);
-    gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 0);
+    //gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 1);
+    //gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 0);
+
+    gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 0);
+    gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 1);
 
 
     auto size = xPortGetFreeHeapSize();
@@ -276,11 +271,11 @@ void start()
     can1->startCAN(500000);
 
 
-    can1->listenAll();
+    //can1->listenAll();
 
     //can1->writeTest();
 
-    can2->startCAN(500000);
+    can2->startCAN(33333);
 
     can2->listenAll();
 

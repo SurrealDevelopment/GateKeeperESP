@@ -13,4 +13,19 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <os.h>
 #include "uac.h"
+
+bool uac::tokenIsValid(std::string token) {
+    // @Todo actually check token
+    return false;
+}
+
+std::string uac::generateNewToken() {
+
+    // generate random token
+    uint8_t randBuffer[32];
+
+    os_get_random(randBuffer, 31);
+    return toBase64(randBuffer, 32);
+}
