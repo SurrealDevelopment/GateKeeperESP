@@ -915,6 +915,20 @@ void MCP2517FD::optimizeFilters()
     }
     while (optimizeFiltersStep()); // repeat step as long as true
 
+
+    // now that we optimized our lists lets rewrite everything
+    // Note this will take some time to do and we can miss messages here
+    // disable all filters
+    disableAllFilters();
+    // rewrite all filters
+    for (uint32_t i = 0; i < filterStackCount; i++)
+    {
+        setFilter(i, mRegRecord->fltAddrMask->first, mRegRecord->fltAddrMask->second, false); // @TODO extended addressing
+        setFilterStatus(i, true);
+    }
+
+    writeAllFiltersStatus();
+
 }
 
 bool MCP2517FD::optimizeFiltersStep() {
@@ -936,11 +950,11 @@ bool MCP2517FD::optimizeFiltersStep() {
         auto fltB = &(mRegRecord->fltAddrMask[i+1]);
         auto calc = fltA->first ^ fltB->first;
         // check octa
-        if ((fltA->second & 0x7FF) == 0x7F8 && (fltB->second & 0x7FF) == 0x7F8 && calc == 4)
+        if ((fltA->second & 0x7FF) == 0x7FC && (fltB->second & 0x7FF) == 0x7FC && calc == 4)
         {
             // upgrade to octa
             fltB->first=fltA->first;
-            fltB->second=0x7F0;
+            fltB->second=0x7F8; // @TODO extended addressing support
             fltA->first=UINT32_MAX; // insure to make flt A irrelevant
             change = true;
             // making fltA irrelevant means we can continue on the algo
@@ -949,7 +963,7 @@ bool MCP2517FD::optimizeFiltersStep() {
         {
             // upgrade to quad
             fltB->first=fltA->first;
-            fltB->second=0x7F8;
+            fltB->second=0x7FC;
             fltA->first=UINT32_MAX; // insure to make flt A irrelevant
             change = true;
 
@@ -961,7 +975,6 @@ bool MCP2517FD::optimizeFiltersStep() {
             fltB->second=0x7FE;
             fltA->first=UINT32_MAX; // insure to make flt A irrelevant
             change = true;
-
         }
         else
         {
@@ -1006,6 +1019,7 @@ bool MCP2517FD::listenTo(uint32_t address, bool extended) {
     // add filter
     setFilter(filterStackCount, address, 0x7FF, false); // @TODO accept extended addressing
     setFilterStatus(filterStackCount, true);
+    writeAllFiltersStatus();
     filterStackCount++;
     return false;
 }
@@ -1015,7 +1029,7 @@ void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
     // reason being we need to deal with splitting filters up.
 
     // check if in filters already
-    for (int i = 0; i < filterStackCount; i++)
+    for (uint32_t i = 0; i < filterStackCount; i++)
     {
         const auto flt= &(mRegRecord->fltcon[i]);
         uint32_t * mask= &(mRegRecord->fltAddrMask[i].second);
@@ -1030,6 +1044,12 @@ void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
             // disable filter
             setFilterStatus(i, false);
             writeAllFiltersStatus();
+
+            // Its common for the removed filter to be the last filter
+            // so we can save some optimization steps by subtracting the stack counter
+            if (i == filterStackCount-1)
+                filterStackCount--;
+
             for (uint32_t b = *addr; b < *addr + range; b++)
             {
                 // If is target filter skip else add filter
@@ -1038,6 +1058,9 @@ void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
 
                 listenTo(b, extended);
             }
+
+            break; // should only be present once so just break
+
         }
     }
 

@@ -25,9 +25,10 @@
 #include "freertos/queue.h"
 #include "freertos/FreeRTOS.h"
 #include "mcp2517fd_spi.h"
+#include "ICAN.h"
 
 
-class MCP2517FD {
+class MCP2517FD: ICAN {
 
 private:
 

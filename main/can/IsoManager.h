@@ -15,14 +15,33 @@
 #ifndef FDOMESP_ISOMANAGER_H
 #define FDOMESP_ISOMANAGER_H
 
+#include "ICAN.h"
+
 /**
  * Like its predecesor in Gretio. ISO Manager will do the logic for
  * single and multi frame messages. It will also do logic for repeating messages.
  *
+ * In the OSI Model this will handle most of the transport layer (layer 4)
+ * and network layer (layer 3)
+ * https://en.wikipedia.org/wiki/ISO_15765-2
+ *
  * ISO Manager also manages what is currently being listened to.
  */
-class IsoManager{
+class IsoManager {
+private:
+public:
+    /**
+     * Constructor which injects which ICAN the IsoManager will use.
+     * @param CAN - the device the manager will use
+     */
+    IsoManager(ICAN CAN);
 
+
+    /**
+     * Alternative setter dependency injection
+     * @param CAN - the device the manager will use
+     */
+    void setICAN(ICAN CAN);
 };
 
 
