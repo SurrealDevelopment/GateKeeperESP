@@ -16,8 +16,8 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-#ifndef FDOMESP_UDS_H
-#define FDOMESP_UDS_H
+#ifndef FDOMESP_SERVICES_H
+#define FDOMESP_SERVICES_H
 
 
 
@@ -75,7 +75,7 @@
 
 //Input/Output Control
 #define UDS_INPUT_OUTPUT_CONTROL 0x2F
-#define UDS_INPUT_OUTPUT_CONTROL 0x6F
+#define UDS_INPUT_OUTPUT_CONTROL_RESPONSE 0x6F
 
 // Remote activiation of routine
 #define UDS_REMOTE_ACTIVATION_OF_ROUTINE 0x31
@@ -111,36 +111,26 @@
 #define SAE_SHOW_PENDING_TROUBLE_CODES 0x07
 #define SAE_SHOW_PENDING_TROUBLE_CODES_RESPONSE 0x47
 #define SAE_CONTROL_OPERATION 0x08
-#define SAE_CONTROL_OPERATION 0x48
+#define SAE_CONTROL_OPERATION_RESPONSE 0x48
 #define SAE_REQUEST_VEHICLE_INFORMATION 0x09
-#define SAE_REQUEST_VEHICLE_INFORMATION_RESPONE 0x49
+#define SAE_REQUEST_VEHICLE_INFORMATION_RESPONSE 0x49
+
+
+/**
+ * GMLAN - General Motors Local Area Network, used on all GM vehicles
+ * from around 2005 to 2018.
+ * GM is based on ISO-TP and thus works just like UDS and J1979
+ * But it has its own set of services, some of which cross over with UDS
+ *
+ * Main reference for these will be GMW3110
+ *
+ * GMLAN is deprecated as of 2018, as for what is replacing it is unknown
+ * at this time.
+ */
+
+#define GMLAN_READ_DATA_BY_IDENTIFIER UDS_READ_DATA_BY_IDENTIFIER
+#define GMLAN_READ_DATA_BY_IDENTIFIER_RESPONSE UDS_READ_DATA_BY_IDENTIFIER_RESPONSE
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#endif //FDOMESP_UDS_H
+#endif //FDOMESP_SERVICES_Hr

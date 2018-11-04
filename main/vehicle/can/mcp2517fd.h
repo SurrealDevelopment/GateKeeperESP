@@ -39,7 +39,7 @@ private:
      * since we can only read/write in 32 bit increments. (i.e. we may only
      * need to write 8 bits but we have to write 32).
      */
-    class RegisterRecord{
+    struct RegisterRecord{
     public:
         REG_CiCON canCon; // Can Controller
         // 4 FIFOCON
@@ -53,9 +53,16 @@ private:
 
         std::pair<uint32_t ,uint32_t> fltAddrMask[32];
 
-
-    };
+    } mRegRecord;
 private:
+
+    const char * name;
+
+    /**
+     * Represents if device is in listen all mode
+     * in which case listenTo requests should be ignored.
+     */
+    bool listenAllMode = false;
 
     uint32_t filterStackCount = 0;
 
@@ -135,12 +142,12 @@ private:
     void * mReadBuffer;
     void * mWriteBuffer;
 
-    void * mRegisterVoidPtr;
 
     // quick casts to uint32_ts and record
     uint32_t * mWriteReg;
     uint32_t * mReadReg;
-    RegisterRecord * mRegRecord;
+
+    ICANListener * listener = nullptr;
 
     /**
      * Initalises secondary pins on device.
@@ -177,6 +184,13 @@ private:
 
     void setFilter(uint32_t filterNum, uint32_t id, uint32_t mask, bool extended = false);
 
+    /**
+     * Writes filter mask and address
+     * Filter must be disabled
+     * @param filterNum filter to write
+     */
+    void writeFilter(uint32_t filterNum);
+
     // quick function to disable all filters. No write
     void disableAllFilters();
 
@@ -187,11 +201,16 @@ private:
 
 
 
+
+
 public:
     /**
      * Give device handle. Assumes configured properely.
      * */
-    explicit MCP2517FD(spi_device_handle_t handle);
+    explicit MCP2517FD(spi_device_handle_t handle, const char * name);
+
+
+    virtual void setCanListener(ICANListener * listener);
 
 
     /**
@@ -248,6 +267,14 @@ public:
     void listenAll();
 
     /**
+     * Stop listening to everything
+     * Note this will reset filters
+     * Allows usage of listenTo and stopListeningTo
+     */
+    void stopListenAll();
+
+
+    /**
      * Tells mcp device to start listening to specified address
      * MCP has 32 filters for listening and will automatically try to optimize the filters.
      * For example listening on 7E8..7EF will be optimized to a single filter
@@ -266,6 +293,16 @@ public:
 
 
     /**
+    * same as listenTo but adds a fallback in case of filter overflow
+     * will switch to listenAllMode.
+    *
+    * @param address to listen to
+    * @return success
+    */
+    void listenToWithFallback(uint32_t address, bool extended);
+
+
+    /**
      * Tells mcp device to stop listening to specified address
      *
      * Will search for address and, if found, remove and reoptimize as needed.
@@ -275,6 +312,11 @@ public:
     void stopListeningTo(uint32_t, bool extended);
 
     void writeTest();
+
+
+    void debugPrintFilters();
+
+    void debugPrintRemoteFilters();
 
 
 };

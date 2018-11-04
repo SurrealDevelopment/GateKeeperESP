@@ -16,32 +16,42 @@
 #define FDOMESP_ISOMANAGER_H
 
 #include "ICAN.h"
+#include "IsoTpMessage.h"
+#include <vector>
+#include <utility>
+
+
+#define MAX_FRAME_BUFFER 512 // max buffer for a frame, which ISO-TP allows to be less than max
 
 /**
  * Like its predecesor in Gretio. ISO Manager will do the logic for
  * single and multi frame messages. It will also do logic for repeating messages.
  *
  * In the OSI Model this will handle most of the transport layer (layer 4)
- * and network layer (layer 3)
+ * and n
  * https://en.wikipedia.org/wiki/ISO_15765-2
  *
  * ISO Manager also manages what is currently being listened to.
  */
 class IsoManager {
 private:
+    /**
+     *  Buffer for frames ie multi frame
+     */
+     uint8_t buffer[MAX_FRAME_BUFFER];
 public:
+
     /**
      * Constructor which injects which ICAN the IsoManager will use.
      * @param CAN - the device the manager will use
      */
-    IsoManager(ICAN CAN);
-
+    IsoManager(ICAN * CAN);
 
     /**
      * Alternative setter dependency injection
      * @param CAN - the device the manager will use
      */
-    void setICAN(ICAN CAN);
+    void setICAN(ICAN * CAN);
 };
 
 

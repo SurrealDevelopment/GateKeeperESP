@@ -28,8 +28,12 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "soc/gpio_struct.h"
-#include <can/mcp2517fd.h>
+#include <vehicle/can/mcp2517fd.h>
 #include "esp_heap_caps.h"
+
+#include "time.h"
+
+#include <vehicle/can/IsoManager.h>
 
 
 #define PARALLEL_LINES 16
@@ -44,6 +48,8 @@ GattServer * gatt;
 MCP2517FD * can1;
 
 MCP2517FD * can2;
+
+IsoManager * a;
 
 
 
@@ -137,8 +143,6 @@ void start()
 
     spi_device_interface_config_t can1dev = {};
 
-    //memset(&can1dev, 0, sizeof(can1dev));
-
 
     // Can 1 device config
     can1dev.clock_speed_hz=SPI_MASTER_FREQ_10M;
@@ -155,9 +159,6 @@ void start()
 
 
     spi_device_interface_config_t can2dev = {};
-
-//    memset(&can2dev, 0, sizeof(can2dev));
-
 
     // Can 2 device config
     can2dev.clock_speed_hz=SPI_MASTER_FREQ_10M;
@@ -185,8 +186,8 @@ void start()
     ret = spi_bus_add_device(VSPI_HOST, &can2dev, &handle2);
     ESP_ERROR_CHECK(ret);
 
-    can1 = new MCP2517FD(handle1);
-    can2 = new MCP2517FD(handle2);
+    can1 = new MCP2517FD(handle1 , "CAN1");
+    can2 = new MCP2517FD(handle2, "CAN2");
     //can2 = new MCP2517FD(handle2);
 
 
@@ -221,16 +222,16 @@ void start()
     // same for int2
     io_conf.pin_bit_mask = 1ULL << PIN_INT2;
 
-    gpio_config(&io_conf);
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     xTaskCreate(&gpio_task, "gpio_task", 2048, nullptr, 10, nullptr);
 
-    gpio_install_isr_service(0);
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
 
-    gpio_isr_handler_add((gpio_num_t)PIN_INT1, &gpio_isr_handler, (void*) PIN_INT1);
-    gpio_isr_handler_add((gpio_num_t)PIN_INT2, &gpio_isr_handler, (void*) PIN_INT2);
+    ESP_ERROR_CHECK(gpio_isr_handler_add((gpio_num_t)PIN_INT1, &gpio_isr_handler, (void*) PIN_INT1));
+    ESP_ERROR_CHECK(gpio_isr_handler_add((gpio_num_t)PIN_INT2, &gpio_isr_handler, (void*) PIN_INT2));
 
 
     // button test
@@ -239,22 +240,22 @@ void start()
     io_conf.intr_type = GPIO_INTR_NEGEDGE;
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE; //Disable pullup
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    gpio_config(&io_conf);
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
-    gpio_isr_handler_add((gpio_num_t)FRNT_USR_BTN, gpio_isr_handler, (void *)FRNT_USR_BTN);
+    ESP_ERROR_CHECK(gpio_isr_handler_add((gpio_num_t)FRNT_USR_BTN, gpio_isr_handler, (void *)FRNT_USR_BTN));
 
 
     // setup can select
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = (1ULL << CAN_MUX_SEL_A) | (1ULL << CAN_MUX_SEL_B);
-    gpio_config(&io_conf);
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
-    //gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 1);
-    //gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 0);
+    ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 1)); // SW CAN
+    ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 0));
 
-    gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 0);
-    gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 1);
+    //ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)CAN_MUX_SEL_A, 0)); // SAE CAN
+    //ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)CAN_MUX_SEL_B, 1));
 
 
     auto size = xPortGetFreeHeapSize();
@@ -270,14 +271,22 @@ void start()
 
     can1->startCAN(500000);
 
-
+    //can1->debugPrintRemoteFilters();
     //can1->listenAll();
+    //can1->debugPrintFilters();
+    //can1->debugPrintRemoteFilters();
+
+
 
     //can1->writeTest();
 
-    can2->startCAN(33333);
+    //can2->startCAN(33333);
 
-    can2->listenAll();
+
+    can1->listenAll();
+
+
+    //can2->listenAll();
 
 
 }

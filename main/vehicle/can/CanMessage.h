@@ -19,10 +19,21 @@
 #ifndef FDOMESP_CANMESSAGE_H
 #define FDOMESP_CANMESSAGE_H
 
+#include <stdint.h>
+
+
 /**
  * Low level CAN Message object.
  */
 class CanMessage{
+public:
+    uint32_t addresss;
+
+    uint8_t * data; // pointer to data. Handle immediately
+
+    uint32_t dataLength;
+
+    bool flexibleDataRate; // if is CAN-FD
 
 };
 

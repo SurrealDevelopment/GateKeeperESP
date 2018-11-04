@@ -19,10 +19,15 @@
 #ifndef FDOMESP_ICANLISTENER_H
 #define FDOMESP_ICANLISTENER_H
 
+#include "CanMessage.h"
+
 /**
  * Listener object for CAN.
  */
 class ICANListener {
+
+    virtual void onCANMessager(CanMessage message);
+
 
 };
 

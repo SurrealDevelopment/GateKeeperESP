@@ -19,11 +19,19 @@
 #ifndef FDOMESP_CANINTERFACE_H
 #define FDOMESP_CANINTERFACE_H
 
+#include "ICANListener.h"
+
 /**
  * ICAN is the general interface for a CAN Device. CAN Device will fullfill
  * the data link layer of the OSI 7 model for CAN.
  */
 class ICAN {
+
+protected:
+
+public:
+    virtual void setCanListener(ICANListener * listener) = 0;
+
 
 };
 

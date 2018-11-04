@@ -4,9 +4,9 @@ set(COMPONENT_ADD_INCLUDEDIRS ".")
 
 list(APPEND COMPONENT_SRCDIRS 
 	    ble
-        obd2/can
-		obd2/protocol
-	.)
+        vehicle/can
+		vehicle/protocol
+	    .)
 
 
 
