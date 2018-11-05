@@ -64,7 +64,7 @@ IsoFragment::IsoFragment(CanMessage message) {
         }
 
     }
-    else if (type == 1 && message.dataLength >= 8) // need CAN Message for first frame
+    else if (type == 1 && message.dataLength >= 8) // need full CAN Message for first frame
     {
         this->mType = Type::FIRST_FRAME; // First frame
 
@@ -75,20 +75,20 @@ IsoFragment::IsoFragment(CanMessage message) {
 
         if (this->totalDataLength == 0) // tell tale sign of a flexible frame
         {
-            this->totalDataLength = message.data[2] << 8;
-            this->totalDataLength |= message.data[3];
-            if (64 > message.dataLength) // must be full
-            {
-                this->mType = Type::INVALID; // invalid message
-                return;
-            }
-            this->data = &message.data[4]; // data starts after 4th byte
-            this->dataLength = 60;
+            // data length is next 4 bytes
+            this->totalDataLength = message.data[2] << 8*3;
+            this->totalDataLength |= message.data[3] << 8*2;
+            this->totalDataLength |= message.data[4] << 8;
+            this->totalDataLength |= message.data[5];
+
+
+            this->data = &message.data[6]; // data starts after 6th byte
+            this->dataLength = message.dataLength - 6;
         }
         else
         {
             this->data = &message.data[2]; // data starts after 2nd byte
-            this->dataLength = 6;
+            this->dataLength = 6; // must be full
         }
 
 
