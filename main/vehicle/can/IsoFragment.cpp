@@ -260,18 +260,20 @@ IsoFragment IsoFragment::makeFirstFrame(bool flex, uint32_t addr, uint8_t *data,
     {
 
         buffer[0] = (1 << 4);
-        buffer[1] = 0;
+        buffer[1] = 0; // length is 0 for standard TP to indicate longer mode
         // for FD data length will be third and fourth bytes
-        buffer[2] = (uint8_t)((totalDataLength >> 8) & 0xff);
-        buffer[3] = (uint8_t)((totalDataLength) & 0xff);
+        buffer[2] = (uint8_t)((totalDataLength >> 8*3) & 0xff);
+        buffer[3] = (uint8_t)((totalDataLength >> 8*2) & 0xff);
+        buffer[4] = (uint8_t)((totalDataLength >> 8) & 0xff);
+        buffer[5] = (uint8_t)((totalDataLength) & 0xff);
         // copy data
-        for (int i = 0; i < 60; i++)
+        for (int i = 0; i < 58; i++)
         {
             buffer[i+4] = data[i];
         }
 
-        f.data = &buffer[4];
-        f.dataLength = 60;
+        f.data = &buffer[6];
+        f.dataLength = 58;
         f.rawDataLength = 64;
         f.rawData = buffer;
 
