@@ -1,7 +1,3 @@
-//
-// Created by Justin Hoogestraat on 11/4/18.
-//
-
 /**
  *  Copyright (C) 2018 Surreal Development LLC
  *  
@@ -80,6 +76,8 @@ public:
      */
     IsoFragment(CanMessage message);
 
+    IsoFragment();
+
 
     /**
      * Create single frame fragment
@@ -130,7 +128,7 @@ public:
      * @param cseq - cseq
      * @return IsoFragment
      */
-    static IsoFragment makeConsecFrame( uint32_t addr, uint8_t * data, uint8_t * buffer, uint32_t dataLength, uint32_t cseq);
+    static IsoFragment makeConsecFrame(bool flex, uint32_t addr, uint8_t * data, uint8_t * buffer, uint32_t dataLength, uint32_t cseq);
 
 
     /**

@@ -1,7 +1,3 @@
-//
-// Created by Justin Hoogestraat on 11/4/18.
-//
-
 /**
  *  Copyright (C) 2018 Surreal Development LLC
  *  
@@ -43,7 +39,7 @@ IsoFragment::IsoFragment(CanMessage message) {
     if (type == 0 && message.dataLength >= 2)
     {
         this->mType = Type::SINGLE_FRAME; // single frame
-        this->dataLength = message.data[0] & 0x0f;
+        this->dataLength = message.data[0] & 0x0fu;
 
         // special case for CAN-FD
         if (this->dataLength == 0)
@@ -73,7 +69,7 @@ IsoFragment::IsoFragment(CanMessage message) {
         this->mType = Type::FIRST_FRAME; // First frame
 
         // half byte 1..3 are length
-        this->totalDataLength = message.data[0] & 0x0f;
+        this->totalDataLength = message.data[0] & 0x0fu;
         this->totalDataLength = this->totalDataLength << 8;
         this->totalDataLength |= message.data[1];
 
@@ -86,12 +82,12 @@ IsoFragment::IsoFragment(CanMessage message) {
                 this->mType = Type::INVALID; // invalid message
                 return;
             }
-            this->data = &buffer[4]; // data starts after 4th byte
+            this->data = &message.data[4]; // data starts after 4th byte
             this->dataLength = 60;
         }
         else
         {
-            this->data = &buffer[2]; // data starts after 2nd byte
+            this->data = &message.data[2]; // data starts after 2nd byte
             this->dataLength = 6;
         }
 
@@ -100,19 +96,19 @@ IsoFragment::IsoFragment(CanMessage message) {
     else if (type == 2)
     {
         this->mType = Type::CONSEC_FRAME; // consec frame message
-        this->cseq= message.data[0] & 0x0f;
+        this->cseq= message.data[0] & 0x0fu;
         this->dataLength = message.dataLength-1; // this is just general rule, always base on first frame
         this->data = &message.data[1];
     }
     else if (type == 3 && message.dataLength >= 3)
     {
         this->mType = Type::FLOW_CONTROL; // flow control
-        uint32_t fcFlag = message.data[0] & 0b11;
+        uint32_t fcFlag = message.data[0] & 0b11u;
         if (fcFlag == 0)
             this->fcFlag = FlowControlFlag::ContinueToSend;
         else if (fcFlag == 1)
             this->fcFlag = FlowControlFlag::Wait;
-        else if f (fcFlag == 2)
+        else if (fcFlag == 2)
             this->fcFlag = FlowControlFlag::OverflowAbort;
         else
             this->mType = Type::INVALID; // invalid message
@@ -143,23 +139,32 @@ IsoFragment::IsoFragment(CanMessage message) {
 }
 
 IsoFragment IsoFragment::makeSingleFrame(bool flex,uint32_t addr, uint8_t *data, uint8_t *buffer, uint32_t dataLength) {
-    if(flex)
-        if (dataLength > 7 ) return null; // cant send more than 7 bytes
-    else
-        if (dataLength > 62) return null; // 2 bytes are used for can-fd
-
 
     IsoFragment frag;
 
     frag.addr = addr;
     frag.dataLength=dataLength;
     frag.rawData = buffer;
+    frag.mType = Type::INVALID;
+
+    if(flex)
+    {
+        if (dataLength > 7 ) return frag; // cant send more than 7 bytes
+    }
+    else
+    {
+        if (dataLength > 62) return frag; // 2 bytes are used for can-fd
+    }
+
+
     frag.mType = Type::SINGLE_FRAME;
+
+
 
     if (flex)
     {
         buffer[0] = 0;
-        buffer[1] = dataLength;
+        buffer[1] = (uint8_t)dataLength;
         // copy buffer to buffer
         for (int i = 0; i < dataLength; i++)
         {
@@ -172,7 +177,7 @@ IsoFragment IsoFragment::makeSingleFrame(bool flex,uint32_t addr, uint8_t *data,
     }
     else
     {
-        buffer[0] = dataLength &0x0f;
+        buffer[0] = (uint8_t)(dataLength &0x0f);
         // copy data to buffer
         for (int i = 0; i < dataLength; i++)
         {
@@ -193,11 +198,11 @@ IsoFragment IsoFragment::makeFlowControl(uint32_t addr, uint8_t *buffer, IsoFrag
     IsoFragment f;
 
     f.addr = addr;
-    f.separationTime =st;
+    f.separationTime = st;
     f.blockSize = blockSize;
     f.mType = Type::FLOW_CONTROL;
     f.fcFlag=flag;
-    this->rawData = buffer;
+    f.rawData = buffer;
 
     if (flag == FlowControlFlag::ContinueToSend)
         buffer[0] = 0;
@@ -207,8 +212,8 @@ IsoFragment IsoFragment::makeFlowControl(uint32_t addr, uint8_t *buffer, IsoFrag
         buffer[0] = 2;
 
     buffer[0] |= (3 << 4);
-    buffer[1] = blockSize;
-    buffer[2] = separationTime;
+    buffer[1] = (uint8_t )blockSize;
+    buffer[2] = (uint8_t )st;
     f.rawDataLength =3;
     f.rawData = buffer;
 
@@ -219,27 +224,31 @@ IsoFragment IsoFragment::makeFlowControl(uint32_t addr, uint8_t *buffer, IsoFrag
 
 IsoFragment IsoFragment::makeFirstFrame(bool flex, uint32_t addr, uint8_t *data, uint8_t *buffer, uint32_t totalDataLength) {
 
-    // sanity checks
-    if (!flex)
-        if (totalDataLength < 8 || totalDataLength > 4095) return nullptr;
-    else
-        if (totalDataLength < 60) return nullptr;
-
     IsoFragment f;
 
     f.addr = addr;
-    f.mType = Type::FLOW_CONTROL;
     f.totalDataLength = totalDataLength;
+    f.mType = Type::INVALID;
+
+    // sanity checks
+    if (!flex) {
+        if (totalDataLength < 8 || totalDataLength > 4095) return f;
+    }
+    else {
+        if (totalDataLength < 60) return f;
+    }
+
+    f.mType = Type::FLOW_CONTROL;
 
     if (!flex)
     {
-        buffer[0] = totalDataLength >> 8;
-        buffer[1] = (totalDataLength & 0xff);
+        buffer[0] = (uint8_t )(totalDataLength >> 8);
+        buffer[1] = (uint8_t )(totalDataLength & 0xff);
         buffer[0] |= (1 << 4);
         // copy data
         for (int i = 0; i < 6; i++)
-        {         buffer[i+2] = data[i];
-
+        {
+            buffer[i+2] = data[i];
         }
 
         f.data = &buffer[2];
@@ -250,11 +259,11 @@ IsoFragment IsoFragment::makeFirstFrame(bool flex, uint32_t addr, uint8_t *data,
     else
     {
 
-        buffer[0] == (1 << 4);
+        buffer[0] = (1 << 4);
         buffer[1] = 0;
         // for FD data length will be third and fourth bytes
-        buffer[2] = (totalDataLength >> 8) & 0xff;
-        buffer[3] = (totalDataLength) & 0xff;
+        buffer[2] = (uint8_t)((totalDataLength >> 8) & 0xff);
+        buffer[3] = (uint8_t)((totalDataLength) & 0xff);
         // copy data
         for (int i = 0; i < 60; i++)
         {
@@ -268,31 +277,43 @@ IsoFragment IsoFragment::makeFirstFrame(bool flex, uint32_t addr, uint8_t *data,
 
     }
 
+    return f;
+
 }
 
 
 IsoFragment
 IsoFragment::makeConsecFrame(bool flex, uint32_t addr, uint8_t *data, uint8_t *buffer, uint32_t dataLength, uint32_t cseq) {
-    if (flex) mFlexRequired = true;
-    if (!mFlexRequired && totalDataLength >7)
-        return nullptr; // sanity check
-    else if (totalDataLength > 63)
-        return nullptr;
 
     IsoFragment f;
 
-    f.mType = Type::CONSEC_FRAME;
     f.rawDataLength = 1 + dataLength;
     f.data = &buffer[1];
+    f.addr = addr;
     f.dataLength = dataLength;
-    buffer[0]= cseq & 0x0f;
-    buffer[0] = (2 << 4);
+
+    f.mType = Type::CONSEC_FRAME;
+
+    buffer[0] = (uint8_t )cseq & (uint8_t )0x0f;
+    buffer[0] |= (2 << 4);
+
+    if (flex) f.mFlexRequired = true;
+
+    if (!f.mFlexRequired && dataLength >7)
+        f.mType = Type::INVALID; // sanity check
+    else if (dataLength > 63)
+        f.mType = Type::INVALID;
+
+    if (f.mType == Type::INVALID)
+        return f;
 
     // copy data
     for (int i = 0; i < dataLength; i++)
     {
         buffer[i+1] = data[i];
     }
+
+    return f;
 }
 
 /**
@@ -302,11 +323,15 @@ IsoFragment::makeConsecFrame(bool flex, uint32_t addr, uint8_t *data, uint8_t *b
  */
 CanMessage IsoFragment::toCanMessage(bool flex) {
 
-    if (!flex && mFlexRequired) return null; // sanity check
+    if (!flex && mFlexRequired) flex = true; // sanity check
     CanMessage msg;
     msg.dataLength = this->rawDataLength;
     msg.data = this->rawData;
     msg.addresss = this->addr;
     msg.flexibleDataRate = flex; // its okay to make a non-flex-required frame a flex frame.
 
+
+    return msg;
+
 }
+

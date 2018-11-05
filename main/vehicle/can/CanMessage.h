@@ -35,6 +35,8 @@ public:
 
     bool flexibleDataRate; // if is CAN-FD
 
+    CanMessage();
+
 };
 
 
