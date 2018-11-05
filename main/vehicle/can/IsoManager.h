@@ -21,7 +21,10 @@
 #include <utility>
 
 
-#define MAX_FRAME_BUFFER 512 // max buffer for a frame, which ISO-TP allows to be less than max
+#define MAX_FRAME_BUFFER 512 // max number of aggregated bytes
+
+#define MAX_MULTIFRAME_SIZE 4095 // largest size of multiframe message
+#define MAX_MULTIFRAME_FD_SIZE 0xffffffff // largest size of multiframe messages in FD mode. Yes that is 4 GB.
 
 /**
  * Like its predecesor in Gretio. ISO Manager will do the logic for
@@ -33,13 +36,27 @@
  *
  * ISO Manager also manages what is currently being listened to.
  */
-class IsoManager {
+class IsoManager : ICANListener {
 private:
+
+    /**
+     * State of what IsoManager is doing
+     */
+    enum class state {
+        NONE, // No or unknown state
+        SENDING_MULTIFRAME,
+        RECIEVING_MULTIFRAME,
+    };
+
+    ICAN * mIcan = nullptr;
     /**
      *  Buffer for frames ie multi frame
      */
      uint8_t buffer[MAX_FRAME_BUFFER];
 public:
+
+    virtual void onCANMessager(CanMessage message);
+
 
     /**
      * Constructor which injects which ICAN the IsoManager will use.

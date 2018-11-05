@@ -1015,9 +1015,9 @@ bool MCP2517FD::optimizeFiltersStep() {
         auto fltA = &(mRegRecord.fltAddrMask[i]);
         auto fltB = &(mRegRecord.fltAddrMask[i+1]);
 
-        if ((fltA->second & 0x7ff) == (fltB->second & 0x7ff)) // If masks are same they are contenders for a merger
+        if ((fltA->second & 0x1FFFFFFF) == (fltB->second & 0x1FFFFFFF)) // If masks are same they are contenders for a merger
         {
-            auto newMask = (fltA->second << 1) & 0x7ff;
+            auto newMask = (fltA->second << 1) & 0x1FFFFFFF;
             // works just like listenTo
             uint32_t calc = fltB->first & newMask;
 
@@ -1048,8 +1048,8 @@ bool MCP2517FD::listenTo(uint32_t address, bool extended) {
     for (uint32_t i = 0; i < filterStackCount; i++)
     {
         const auto flt= mRegRecord.fltcon[i];
-        uint32_t mask= (mRegRecord.fltAddrMask[i].second) & 0x7ffff; // and since there is extra stuff in register
-        uint32_t addr= (mRegRecord.fltAddrMask[i].first) & 0x7ffff;
+        uint32_t mask= (mRegRecord.fltAddrMask[i].second) & 0x1FFFFFFF; // and since there is extra stuff in register
+        uint32_t addr= (mRegRecord.fltAddrMask[i].first) & 0x1FFFFFFF;
         uint32_t calc = address & mask;  // if address in filter calc will == addr
 
 
@@ -1075,7 +1075,7 @@ bool MCP2517FD::listenTo(uint32_t address, bool extended) {
     }
 
     // add filter
-    setFilter(availableFilter, address, 0x7FF, false); // @TODO accept extended addressing
+    setFilter(availableFilter, address, 0x1FFFFFFF, false); // @TODO accept extended addressing
     setFilterStatus(availableFilter, true);
     writeFilter(availableFilter);
     writeAllFiltersStatus();
@@ -1114,7 +1114,7 @@ void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
 
         if (flt.b.en && calc == addr)
         {
-            uint32_t range = (mask ^ 0x7FF) + 1; // xor will be range
+            uint32_t range = (mask ^ 0x1FFFFFFF) + 1; // xor will be range
             // filter found
             // disable filter
             setFilterStatus(i, false);
@@ -1206,7 +1206,7 @@ void MCP2517FD::debugPrintFilters() {
         ESP_LOGI(LOG_TAG, "Filter RECORD is 0x%02x ADDR: %04x MASK %04x",
                  mRegRecord.fltcon[i].byte,
                  mRegRecord.fltAddrMask[i].first,
-                 mRegRecord.fltAddrMask[i].second & 0xfff);
+                 mRegRecord.fltAddrMask[i].second & 0x1FFFFFFF);
 
 
     }

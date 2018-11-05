@@ -17,3 +17,16 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include "IsoManager.h"
+#include "IsoFragment.h"
+
+void IsoManager::onCANMessager(CanMessage message) {
+
+}
+
+IsoManager::IsoManager(ICAN *CAN) {
+    this->mIcan = CAN;
+}
+
+void IsoManager::setICAN(ICAN *CAN) {
+    this->mIcan = CAN;
+}
