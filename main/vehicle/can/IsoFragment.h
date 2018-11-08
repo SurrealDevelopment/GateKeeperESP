@@ -22,7 +22,8 @@
  * Converts Standard can message to an ISO-TP Message
  * and aids in creation of converting ISO TP frames to raw can messages.
  *
- * Works with both ISO-TP for CAN and ISO-TYP for CAN-FD
+ * Works with both ISO-TP for CAN and ISO-TP for CAN-FD as specified in
+ * ISO 15765-2:2016
  */
 class IsoFragment{
 public:
@@ -56,8 +57,8 @@ public:
 
     // used for first, consec, and single frame
     uint8_t * data; // pointer to data of fragment. Handle immediately
-    uint32_t dataLength =0; //length of data or data just stored in fragment
-    uint32_t totalDataLength =0; //length of total data for first frame
+    uint32_t dataLength = 0; //length of data or data just stored in fragment
+    uint32_t totalDataLength = 0; //length of total data for first frame
 
     // used for consec frames only
     uint32_t cseq =0;
@@ -65,7 +66,7 @@ public:
     // Used for flow control only
     FlowControlFlag fcFlag;
     uint32_t blockSize=0;
-    uint32_t separationTime=0; // seperation time in microseconds
+    uint32_t separationTime=0; // separation time in microseconds
 
     Type getType();
 
@@ -74,9 +75,9 @@ public:
      * Create and parse iso fragment from CanMessage
      * @param message - message to parse
      */
-    IsoFragment(CanMessage message);
+    explicit IsoFragment(CanMessage message);
 
-    IsoFragment();
+    IsoFragment() = default;
 
 
     /**

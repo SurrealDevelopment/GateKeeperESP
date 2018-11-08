@@ -62,13 +62,18 @@ void MCP2517FD::initRegisterRecord() {
 
 
 
-MCP2517FD::MCP2517FD(spi_device_handle_t handle, const char * name) {
+MCP2517FD::MCP2517FD(spi_device_handle_t handle, const char * name): AbstractICAN(name) {
 
     this->name = name;
     mReadBuffer = heap_caps_malloc(HEAP_SIZE, MALLOC_CAP_DMA);
     mWriteBuffer = heap_caps_malloc(HEAP_SIZE, MALLOC_CAP_DMA);
     mReadReg = (uint32_t *)(mReadBuffer); 
     mWriteReg = (uint32_t *)(mWriteBuffer);
+
+
+    // queues for MCP's data
+    mRegRecord.medPriority = xQueueCreate(MED_PRI_QUEUESIZE, sizeof(PendingMessage));
+    mRegRecord.highPriority = xQueueCreate(HIGH_PRI_QUEUESIZE, sizeof(PendingMessage));
 
 
     initRegisterRecord();
@@ -80,10 +85,13 @@ MCP2517FD::MCP2517FD(spi_device_handle_t handle, const char * name) {
 
 }
 
-MCP2517FD::~MCP2517FD() {
+MCP2517FD::~MCP2517FD()  {
 
     heap_caps_free(mReadBuffer);
     heap_caps_free(mWriteBuffer);
+
+    free(mRegRecord.medPriority);
+    free(mRegRecord.highPriority);
 
 
 }
@@ -323,8 +331,8 @@ bool MCP2517FD::initFifo() {
     REG_CiTXQCON * txcon = &(mRegRecord.fifo0con);
 
     txcon->b.PayLoadSize = 0b111; // 64 bytes
-    txcon->b.FifoSize = 4; // 4 messages (256 bytes)
-    txcon->b.TxRetransmissionAttempts = 2; // or 3 attempts
+    txcon->b.FifoSize = MED_PRI_QUEUESIZE; // 4 messages (256 bytes)
+    txcon->b.TxRetransmissionAttempts = 0b01; // or 3 attempts
     txcon->b.TxPriority = 0b00111; // midish priority
     txcon->b.TxEmptyInterruptEn = 0;
 
@@ -349,8 +357,8 @@ bool MCP2517FD::initFifo() {
 
     fifoCon->b.TxRxSel=1;
     fifoCon->b.FIFOPayload = 0b111; // 64 bytes
-    fifoCon->b.FIFOSize = 2; // 2 messages (128 bytes)
-    fifoCon->b.TxRetransmissionAttempt = 2; // or 3 attempts
+    fifoCon->b.FIFOSize = HIGH_PRI_QUEUESIZE; // 2 messages (128 bytes)
+    fifoCon->b.TxRetransmissionAttempt = 0b01; // or 3 attempts
     fifoCon->b.TxTransmitPriority = 0b11111; // top priority
 
     pollingWriteRegister(ADDR_C1FIFOCON1, fifoCon->word);
@@ -369,32 +377,6 @@ bool MCP2517FD::initFifo() {
         log_write_data_error(ADDR_C1FIFOCON1);
         return false;
     }
-
-    // FIFO 2 config
-
-    fifoCon = &(mRegRecord.fifo2con);
-    fifoCon->b.TxRxSel=1;
-    fifoCon->b.FIFOPayload = 0b111; // 64 bytes
-    fifoCon->b.FIFOSize = 2; // 2 messages (128 bytes)
-    fifoCon->b.TxRetransmissionAttempt = 2; // or 3 attempts
-    fifoCon->b.TxTransmitPriority = 0; // lowest priority
-    pollingWriteRegister(ADDR_C1FIFOCON2, fifoCon->word);
-
-
-    fifoConCheck = (REG_CiFIFOCONm *) pollingReadRegister(ADDR_C1FIFOCON2);
-
-
-    // check
-    if (fifoConCheck->b.FIFOPayload != fifoCon->b.FIFOPayload ||
-        fifoConCheck->b.FIFOSize != fifoCon->b.FIFOSize ||
-        fifoConCheck->b.TxRetransmissionAttempt != fifoCon->b.TxRetransmissionAttempt ||
-        fifoConCheck->b.TxTransmitPriority != fifoCon->b.TxTransmitPriority ||
-        fifoConCheck->b.TxRxSel != fifoCon->b.TxRxSel)
-    {
-        log_write_data_error(ADDR_C1FIFOCON2);
-        return false;
-    }
-
 
 
 
@@ -715,6 +697,92 @@ bool MCP2517FD::changeMode(uint32_t mode) {
 
 }
 
+
+/**
+ * Converts dlc to real message length
+ *
+ * @param dlc 0..15
+ * @param fd indicate if its a can fd frame
+ * @return length in bytes
+ */
+uint32_t dlcToLength(uint32_t dlc, bool fd)
+{
+    if (!fd)
+    {
+        if (dlc <= 8)
+            return dlc;
+        else
+            return 8;
+    }
+    else
+    {
+        if (dlc <= 8)
+            return dlc;
+        else if (dlc <= 11)
+            return 8+(4*(dlc - 8u)); // all lengths after 8 mul by 4
+        else if (dlc <= 13)
+            return (20+(6*(dlc-11u)));
+        else if (dlc <= 15)
+            return (32+(16*(dlc-13u)));
+        else
+            return 64;
+
+    }
+}
+
+/**
+ * Converts a message length to dlc
+ * Rounds up
+ *
+ * @param length 0..64
+ * @param fd indicate if its a can fd frame
+ * @return length in bytes
+ */
+uint32_t lengthToDlc(uint32_t length, bool fd)
+{
+    if (!fd)
+    {
+        if (length <= 8)
+            return length;
+        else return 8;
+    }
+    else
+    {
+        if (length <= 8)
+            return length;
+        else if (length <= 20)
+        {
+            auto spare = length - 8;
+            auto mod = spare % 4;
+            auto div = spare / 4;
+            if (mod != 0) div++;
+            return (div+8);
+
+        }
+        else if (length <= 32)
+        {
+            auto spare = length - 20;
+            auto mod = spare % 6;
+            auto div = spare / 6;
+            if (mod != 0) div++;
+            return (div+11);
+        }
+        else if (length <= 64)
+        {
+            auto spare = length - 32;
+            auto mod = spare % 16;
+            auto div = spare / 16;
+            if (mod != 0) div++;
+            return (div+13);
+        }
+        else
+            return  15;
+
+
+    }
+}
+
+
 /**
  * Interrupt logic. Interrupts are going to use their own transactions
  */
@@ -728,13 +796,16 @@ void MCP2517FD::interrupt() {
 
     const auto iReg = reg->word;
 
-    // write back INT acking the interrupt
-    pollingWriteRegister(ADDR_C1INT, mRegRecord.interrupt.word);
+
 
 
     if (iReg & 1) // Tx FIFO
     {
-        //@TODO check our queue, send more if we can
+        /*
+         * It may be worth it here to see the interrupt code register
+         * but since we only have 2 tx fifos we can just check both
+         */
+        softInterrupt();
     }
     if (iReg & 2) // Rx FIFO
     {
@@ -839,12 +910,100 @@ void MCP2517FD::interrupt() {
         ESP_LOGW(LOG_TAG, "INVALID MESSAGE");
     }
 
-
-
-
-
+    // write back INT to clear the interrupt
+    pollingWriteRegister(ADDR_C1INT, mRegRecord.interrupt.word);
 
 }
+
+void MCP2517FD::softInterrupt() {
+    // check queues
+
+
+    //med pri
+    auto statusMed = (REG_CiFIFOSTAm *) pollingReadRegister(ADDR_C1TXQSTA); // med pri
+    auto statusHigh = (REG_CiFIFOSTAm *) pollingReadRegister(ADDR_C1FIFOSTA1); // high pri
+
+    PendingMessage msg;
+
+    while (statusMed->b.FIFONotFullEmptyInterruptFlag == 1) // while FIFO not full
+    {
+        auto pull = xQueueReceive(this->medPriority, &msg, 0);
+
+        if (pull != pdTRUE)
+            break; // no messages to send
+        // else msg is valid
+
+        // dont send if not in correct mode
+        if ( !(this->mRegRecord.canCon.b.OpMode == CAN_NORMAL_MODE
+            || this->mRegRecord.canCon.b.OpMode == CAN_CLASSIC_MODE))
+        {
+            // refuse
+            if (msg.onRelease != nullptr) msg.onRelease();
+            if (msg.onFinish != nullptr) msg.onFinish(MessageWriteResult::FAIL);
+            continue;
+        }
+
+        // dont send fd frames if not in fd mode
+        if (this->mRegRecord.canCon.b.OpMode != CAN_NORMAL_MODE &&
+            msg.message.flexibleDataRate)
+        {
+            if (msg.onRelease != nullptr) msg.onRelease();
+            if (msg.onFinish != nullptr) msg.onFinish(MessageWriteResult::FAIL);
+            continue;
+        }
+
+        auto addr = *pollingReadRegister(ADDR_C1TXQUA); // med pri
+        addr = addr + 0x400; // offset
+
+        auto buf = (TRANSMIT_MESSAGE_OBJECT *)mWriteBuffer;
+        auto dlc = lengthToDlc(msg.message.dataLength, msg.message.flexibleDataRate);
+        auto adjustLength = dlcToLength(dlc, msg.message.flexibleDataRate);
+
+        buf->prim.word1=0;
+        buf->prim.word2=0;
+        buf->control.standardIdentifier=msg.message.addresss;
+        buf->control.ExtesnionFlag = (uint32_t )msg.message.extended;
+        buf->control.FDF = (uint32_t )msg.message.flexibleDataRate;
+        buf->control.BitRateSwitch = (uint32_t )msg.message.flexibleDataRate;
+        buf->control.DLC=
+        buf->control.Sequence = this->mRegRecord.transmitCSeq++;
+
+        // copy data
+        for (uint32_t i; i<adjustLength; i++)
+        {
+            if (i >= msg.message.dataLength)
+            {
+                // add 0xAA as padding
+                buf->prim.data[i] = 0xAA;
+            } else {
+                buf->prim.data[i] = msg.message.data[i];
+            }
+        }
+
+        // notify it can release its memory
+        msg.onRelease();
+
+        pollingWriteAddress(addr, mWriteBuffer, 64); // 64 bytes + 8 control
+
+        // set uinc of FIFOCON to increment the FIFO because we transmit the message
+        mRegRecord.fifo0con.b.IncrementHeadTail = 1;
+        mRegRecord.fifo0con.b.TxRequest = 1;
+
+        pollingWriteRegister(ADDR_C1TXQCON, mRegRecord.fifo0con.word);
+        mRegRecord.fifo0con.b.IncrementHeadTail = 0;
+        mRegRecord.fifo0con.b.TxRequest = 0;
+
+
+        statusMed = (REG_CiFIFOSTAm *) pollingReadRegister(ADDR_C1TXQSTA); // med pri
+
+        //@Todo set on write to only occur after we recieve a transmit event
+
+        msg.onFinish(MessageWriteResult::OKAY);
+
+    }
+
+}
+
 
 bool MCP2517FD::generalInit() {
 
@@ -1146,54 +1305,6 @@ void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
 
 
 
-void MCP2517FD::writeTest() {
-
-    auto status = (REG_CiFIFOSTAm *) pollingReadRegister(ADDR_C1TXQSTA); // med pri
-
-
-    // same story as recieving frames
-    while (status->word & 1)
-    {
-
-        vTaskDelay(100/portTICK_RATE_MS);
-
-        auto addr = *pollingReadRegister(ADDR_C1TXQUA); // med pri
-
-        addr = addr + 0x400; // offset
-
-
-        ESP_LOGI(LOG_TAG, "ADDR: 0x%08x",addr);
-
-
-        auto buf = (TRANSMIT_MESSAGE_OBJECT *)mWriteBuffer;
-
-        buf->prim.word1=0;
-        buf->prim.word2=0;
-        buf->control.standardIdentifier=0x7E0;
-        buf->control.ExtesnionFlag=0;
-        buf->control.FDF = 0;
-        buf->control.DLC=8;
-
-        buf->prim.data[0] = 01;
-
-
-        pollingWriteAddress(addr, mWriteBuffer, 64); // 64 bytes + 8 control
-
-        // set uinc of FIFOCON to increment the FIFO because we transmit the message
-        mRegRecord.fifo0con.b.IncrementHeadTail = 1;
-        mRegRecord.fifo0con.b.TxRequest = 1;
-
-        pollingWriteRegister(ADDR_C1TXQCON, mRegRecord.fifo0con.word);
-        mRegRecord.fifo0con.b.IncrementHeadTail = 0;
-        mRegRecord.fifo0con.b.TxRequest = 0;
-
-
-        status = (REG_CiFIFOSTAm *) pollingReadRegister(ADDR_C1TXQSTA);
-    }
-
-
-}
-
 void MCP2517FD::setCanListener(ICANListener * listener) {
     this->listener = listener;
 }
@@ -1245,3 +1356,12 @@ void MCP2517FD::debugPrintRemoteFilters() {
     ESP_LOGI(LOG_TAG, "----------End Round------------");
 
 }
+
+void MCP2517FD::onWriteMessageQueueChange() {
+    this->softInterrupt();
+}
+
+void MCP2517FD::onInterrupt() {
+    this->interrupt();
+}
+

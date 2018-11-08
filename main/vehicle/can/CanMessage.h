@@ -20,6 +20,7 @@
 #define FDOMESP_CANMESSAGE_H
 
 #include <stdint.h>
+#include <functional>
 
 
 /**
@@ -27,6 +28,7 @@
  */
 class CanMessage{
 public:
+
     uint32_t addresss;
 
     uint8_t * data; // pointer to data. Handle immediately
@@ -34,6 +36,8 @@ public:
     uint32_t dataLength;
 
     bool flexibleDataRate; // if is CAN-FD
+
+    bool extended;
 
     CanMessage();
 

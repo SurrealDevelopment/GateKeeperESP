@@ -27,10 +27,34 @@
  */
 class ICAN {
 
-protected:
-
 public:
+
+
+    enum class Priority {
+        High,
+        Med,
+        Low
+    };
+
+    enum class MessageWriteResult {
+        OKAY,
+        FAIL
+    };
+
+
     virtual void setCanListener(ICANListener * listener) = 0;
+
+
+    /**
+     * Write a message to the CAN Device
+     *
+     * @param message - message to write.
+     * @param priority - priority of message
+     * @param onFinish - higher order function called when on finish from ICAN thread
+     */
+    virtual void writeMessage(CanMessage message, Priority priority, std::function<void(MessageWriteResult)> onFinish) = 0;
+
+
 
 
 };

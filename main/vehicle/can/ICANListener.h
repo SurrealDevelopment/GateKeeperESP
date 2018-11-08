@@ -26,7 +26,7 @@
  */
 class ICANListener {
 
-    virtual void onCANMessager(CanMessage message);
+    virtual void onCANMessager(CanMessage message) = 0;
 
 
 };

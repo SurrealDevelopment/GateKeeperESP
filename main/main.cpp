@@ -64,41 +64,22 @@ static xQueueHandle gpio_evt_queue = NULL;
 static void IRAM_ATTR gpio_isr_handler(void * arg)
 {
     uint32_t gpio_num = (uint32_t) arg;
-    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 
-}
-
-
-static void gpio_task(void* arg)
-{
-    bool toggle = true;
-    uint32_t io_num;
-    while(toggle){
-        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+    if (gpio_num == PIN_INT1)
+    {
+        // invoke can1 interrupt
+        gpio_num = 1;
+        xQueueSendFromISR(can1->taskQueue, &gpio_num, NULL);
 
 
-            if (io_num == PIN_INT1)
-            {
-                // invoke can1 interrupt
-                can1->interrupt();
-
-            }
-            else if (io_num == PIN_INT2)
-            {
-                // invoke can2 interrupt
-                can2->interrupt();
-            }
-            else if (io_num == -1)
-            {
-                // allows us to stop the gpio task if for whatever reason we need to.
-                toggle = false;
-            }
-        }
+    }
+    else if (gpio_num == PIN_INT2)
+    {
+        // can2 interrupt
+        gpio_num = 1;
+        xQueueSendFromISR(can2->taskQueue, &gpio_num, NULL);
     }
 }
-
-
-
 
 
 void start()
@@ -223,10 +204,7 @@ void start()
     io_conf.pin_bit_mask = 1ULL << PIN_INT2;
 
     ESP_ERROR_CHECK(gpio_config(&io_conf));
-
-    //create a queue to handle gpio event from isr
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    xTaskCreate(&gpio_task, "gpio_task", 2048, nullptr, 10, nullptr);
+    
 
     ESP_ERROR_CHECK(gpio_install_isr_service(0));
 

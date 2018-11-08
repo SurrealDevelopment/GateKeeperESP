@@ -285,6 +285,7 @@ typedef union _REG_CiTSCON {
 } REG_CiTSCON;
 
 
+
 //  INTERRUPT CODE REGISTER 3-12
 typedef union _REG_CiVEC{
 
@@ -300,7 +301,6 @@ typedef union _REG_CiVEC{
 
     } b;
     uint32_t word;
-    uint8_t byte[4];
 } REG_CiVEC;
 
 
@@ -345,7 +345,6 @@ typedef union _REG_CiINT{
 
     } b;
     uint32_t word;
-    uint8_t byte[4];
 } REG_CiINT;
 
 
@@ -381,15 +380,8 @@ typedef union _REG_CiFIFOCONm{
         uint32_t FIFOSize : 5; // 1 ... 32
         uint32_t FIFOPayload : 3; // 1 ... 64
 
-
-
-
-
-
-
     } b;
     uint32_t word;
-    uint8_t byte[4];
 } REG_CiFIFOCONm;
 
 //  FIFO STATUS Register
@@ -410,7 +402,6 @@ typedef union _REG_CiFIFOSTAm{
 
     } b;
     uint32_t word;
-    uint8_t byte[4];
 } REG_CiFIFOSTAm;
 
 
@@ -422,7 +413,6 @@ typedef union _REG_CiFIFOUAm{
         uint32_t address: 32;
     } b;
     uint32_t word;
-    uint8_t byte[4];
 } REG_CiFIFOUAm;
 
 
@@ -455,7 +445,6 @@ typedef union _REG_CiTXQCON {
         uint32_t PayLoadSize : 3; // 8,12 ... 32,48,64
     } b;
     uint32_t word;
-    uint8_t byte[4];
 } REG_CiTXQCON;
 
 //  Tx queue STATUS Register
@@ -476,7 +465,6 @@ typedef union _REG_CiTXQSTA{
 
     } b;
     uint32_t word;
-    uint8_t byte[4];
 } REG_CiTXQSTA;
 
 

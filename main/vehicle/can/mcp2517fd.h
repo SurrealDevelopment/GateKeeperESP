@@ -25,10 +25,12 @@
 #include "freertos/queue.h"
 #include "freertos/FreeRTOS.h"
 #include "mcp2517fd_spi.h"
-#include "ICAN.h"
+#include "AbstractICAN.h"
 
+#define MED_PRI_QUEUESIZE 8
+#define HIGH_PRI_QUEUESIZE 2
 
-class MCP2517FD: ICAN {
+class MCP2517FD: public AbstractICAN {
 
 private:
 
@@ -52,6 +54,14 @@ private:
         REG_CiFLTCONm fltcon[32]; // 32 filter controllers (8 bytes). We keep a local copy of these.
 
         std::pair<uint32_t ,uint32_t> fltAddrMask[32];
+
+        xQueueHandle medPriority;
+        xQueueHandle highPriority;
+
+        /*
+         * Sequence number for transmissions
+         */
+        uint32_t transmitCSeq = 0;
 
     } mRegRecord;
 private:
@@ -198,6 +208,19 @@ private:
     bool optimizeFiltersStep(); // recursive optimize filter step
 
 
+    /**
+     * Interrupt call. This class doesn't handle calling interrupt on its own.
+     * It must be done externally.
+     */
+    void interrupt();
+
+
+    /**
+     * Alternative interrupt sourced from program not chip
+     */
+    void softInterrupt();
+
+
 
 
 
@@ -213,11 +236,7 @@ public:
     virtual void setCanListener(ICANListener * listener);
 
 
-    /**
-     * Interrupt call. This class doesn't handle calling interrupt on its own.
-     * It must be done externally.
-     */
-    void interrupt();
+
 
 
     ~MCP2517FD();
@@ -311,12 +330,13 @@ public:
      */
     void stopListeningTo(uint32_t, bool extended);
 
-    void writeTest();
-
-
     void debugPrintFilters();
 
     void debugPrintRemoteFilters();
+
+    void onWriteMessageQueueChange() override;
+
+    void onInterrupt() override;
 
 
 };
