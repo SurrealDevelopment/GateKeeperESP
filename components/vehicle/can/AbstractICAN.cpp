@@ -70,7 +70,7 @@ AbstractICAN::~AbstractICAN() {
 
 
 void
-AbstractICAN::writeMessage(CanMessage message, ICAN::Priority priority, std::function<MessageWriteResult()> onFinish) {
+AbstractICAN::writeMessage(CanMessage message, ICAN::Priority priority, std::function<void(MessageWriteResult)> onFinish) {
 
     PendingMessage msg;
 
@@ -86,8 +86,8 @@ AbstractICAN::writeMessage(CanMessage message, ICAN::Priority priority, std::fun
         case Priority::Med:
             xQueueSendToBack(this->medPriority,&msg, portMAX_DELAY);
             break;
-        case Priority::Low:
-            xQueueSendToBack(this->lowPriority,&msg, portMAX_DELAY);
+        case Priority::Low: // just send lows to med
+            xQueueSendToBack(this->medPriority,&msg, portMAX_DELAY);
             break;
     }
 

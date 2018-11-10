@@ -28,12 +28,15 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "soc/gpio_struct.h"
-#include <vehicle/can/mcp2517fd.h>
+
+
+#include <can/mcp2517fd.h>
 #include "esp_heap_caps.h"
 
 #include "time.h"
+#include <can/IsoManager.h>
 
-#include <vehicle/can/IsoManager.h>
+#include <uds/SAEShowCurrentDataRequest.h>
 
 
 #define PARALLEL_LINES 16
@@ -80,6 +83,9 @@ static void IRAM_ATTR gpio_isr_handler(void * arg)
         xQueueSendFromISR(can2->taskQueue, &gpio_num, NULL);
     }
 }
+
+uint8_t  bytes[] =  {0x07, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
+uint8_t  bytes2[] =  {0x1, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
 
 
 void start()
@@ -204,7 +210,7 @@ void start()
     io_conf.pin_bit_mask = 1ULL << PIN_INT2;
 
     ESP_ERROR_CHECK(gpio_config(&io_conf));
-    
+
 
     ESP_ERROR_CHECK(gpio_install_isr_service(0));
 
@@ -261,10 +267,34 @@ void start()
     //can2->startCAN(33333);
 
 
-    can1->listenAll();
-
-
     //can2->listenAll();
+
+    a = new IsoManager(can1);
+
+    CanMessage test;
+
+    test.addresss=0x7e8;
+
+    test.dataLength=8;
+    test.extended=false;
+    test.flexibleDataRate=false;
+    test.data = bytes;
+
+
+    a->openStandardChannel(0x7e8, [](IsoManager::IsoUpdate msg)->bool {
+        ESP_LOGW("TEST", "Got msg");
+        return true;
+    });
+
+
+
+    can1->debugPrintRemoteFilters();
+    can1->debugPrintFilters();
+
+    SAEShowCurrentData req(0x7e0, 11);
+
+
+
 
 
 }

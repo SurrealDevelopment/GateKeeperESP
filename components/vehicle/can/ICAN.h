@@ -52,7 +52,19 @@ public:
      * @param priority - priority of message
      * @param onFinish - higher order function called when on finish from ICAN thread
      */
-    virtual void writeMessage(CanMessage message, Priority priority, std::function<void(MessageWriteResult)> onFinish) = 0;
+    virtual void writeMessage(CanMessage message,
+            Priority priority,
+            std::function<void(MessageWriteResult)> onFinish) = 0;
+
+    /**
+     *  listen functions
+     */
+    virtual void listenAll() = 0;
+    virtual bool listenTo(uint32_t address, bool extended) = 0;
+    virtual void listenToWithFallback(uint32_t address, bool extended) = 0;
+    virtual void stopListeningTo(uint32_t, bool extended) = 0;
+    virtual void stopListenAll() = 0;
+
 
 
 

@@ -1,5 +1,5 @@
 //
-// Created by Justin Hoogestraat on 10/29/18.
+// Created by Justin Hoogestraat on 11/1/18.
 //
 
 /**
@@ -16,17 +16,5 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-#include "IsoManager.h"
-#include "IsoFragment.h"
+#include "IsoTpMessage.h"
 
-void IsoManager::onCANMessager(CanMessage message) {
-
-}
-
-IsoManager::IsoManager(ICAN *CAN) {
-    this->mIcan = CAN;
-}
-
-void IsoManager::setICAN(ICAN *CAN) {
-    this->mIcan = CAN;
-}

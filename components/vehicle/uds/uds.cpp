@@ -16,3 +16,21 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#include <can/IsoTpMessage.h>
+
+/**
+ * Retreives SID message of an IsoTpMessage
+ * @param msg
+ * @return - SID , 0 for invalid
+ */
+uint32_t getMessageSid(IsoTpMessage msg)
+{
+    if (msg.dataLength == 0)
+    {
+        return 0;
+    }
+    else
+    {
+        return (uint32_t) msg.data[0];
+    }
+}

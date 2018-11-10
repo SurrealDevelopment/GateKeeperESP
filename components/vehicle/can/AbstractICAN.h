@@ -51,13 +51,13 @@ public:
     xQueueHandle taskQueue;
 
 
-    AbstractICAN(std::string name);
+    explicit AbstractICAN(std::string name);
     ~AbstractICAN();
 
 
-    virtual void setCanListener(ICANListener * listener) = 0;
+    void setCanListener(ICANListener * listener) override = 0;
 
-    void writeMessage(CanMessage message, Priority priority, std::function<void(MessageWriteResult)> onFinish) override;
+    void writeMessage(CanMessage message, ICAN::Priority priority, std::function<void(MessageWriteResult)> onFinish) override;
 
     /**
      * Called whenever something is added to one of the message queues

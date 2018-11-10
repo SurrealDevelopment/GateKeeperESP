@@ -969,7 +969,7 @@ void MCP2517FD::softInterrupt() {
         buf->control.Sequence = this->mRegRecord.transmitCSeq++;
 
         // copy data
-        for (uint32_t i; i<adjustLength; i++)
+        for (uint32_t i = 0; i<adjustLength; i++)
         {
             if (i >= msg.message.dataLength)
             {
@@ -1247,6 +1247,7 @@ bool MCP2517FD::listenTo(uint32_t address, bool extended) {
 }
 
 void MCP2517FD::listenToWithFallback(uint32_t address, bool extended) {
+
     if (!listenTo(address, extended))
     {
         ESP_LOGW(LOG_TAG, "%s Filter Overflow. Switching to fallback mode.", name);
@@ -1310,7 +1311,7 @@ void MCP2517FD::setCanListener(ICANListener * listener) {
 }
 
 void MCP2517FD::debugPrintFilters() {
-    ESP_LOGV(LOG_TAG, "%s Local Filters", name);
+    ESP_LOGI(LOG_TAG, "%s Local Filters", name);
     for (uint32_t i = 0; i < 32; i++)
     {
 
@@ -1327,13 +1328,11 @@ void MCP2517FD::debugPrintFilters() {
 
 
 void MCP2517FD::debugPrintRemoteFilters() {
-    ESP_LOGV(LOG_TAG, "%s Remote Filters", name);
+    ESP_LOGI(LOG_TAG, "%s Remote Filters", name);
     for (uint32_t i = 0; i < 32/4; i++)
     {
 
         auto thing = *pollingReadRegister(ADDR_C1FLTCON0+i*4);
-
-
 
         for (uint32_t k = 0; k < 4; k++)
         {
@@ -1348,8 +1347,6 @@ void MCP2517FD::debugPrintRemoteFilters() {
 
             thing = thing >> 8;
         }
-
-
 
 
     }

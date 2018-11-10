@@ -1,5 +1,5 @@
 //
-// Created by Justin Hoogestraat on 11/1/18.
+// Created by Justin Hoogestraat on 11/10/18.
 //
 
 /**
@@ -16,8 +16,24 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-#include "IsoTpMessage.h"
+#include "SAESHowCurrentDataResponse.h"
 
-bool IsoTpMessage::isValid() {
-    return (dataLength >= 0 && dataLength <= MAX_ISO_TP_DATA_LENGTH);
+
+SAESHowCurrentDataResponse::SAESHowCurrentDataResponse(IsoTpMessage msg): ServiceMessage(msg)
+{
+    if (this->validity != Validity::VALID || msg.dataLength < 3)
+    {
+        this->validity = Validity::INVALID;
+        return;
+    }
+
+    this->pid = msg.data[1];
+    for (int i = 2; i < msg.dataLength && i < 6; i++)
+    {
+        this->dataBytes[i-2] = msg.data[i];
+    }
+
+    this->dataLength = msg.dataLength;
+
 }
+

@@ -283,14 +283,14 @@ public:
      * listen to everyhting.
      * Note this will reset filters
      */
-    void listenAll();
+    void listenAll() override;
 
     /**
      * Stop listening to everything
      * Note this will reset filters
      * Allows usage of listenTo and stopListeningTo
      */
-    void stopListenAll();
+    void stopListenAll() override;
 
 
     /**
@@ -308,7 +308,7 @@ public:
      * @param address to listen to
      * @return success
      */
-    bool listenTo(uint32_t address, bool extended);
+    bool listenTo(uint32_t address, bool extended) override;
 
 
     /**
@@ -318,7 +318,7 @@ public:
     * @param address to listen to
     * @return success
     */
-    void listenToWithFallback(uint32_t address, bool extended);
+    void listenToWithFallback(uint32_t address, bool extended) override;
 
 
     /**
@@ -328,7 +328,7 @@ public:
      *
      * @param address to stop listening  to
      */
-    void stopListeningTo(uint32_t, bool extended);
+    void stopListeningTo(uint32_t, bool extended) override;
 
     void debugPrintFilters();
 

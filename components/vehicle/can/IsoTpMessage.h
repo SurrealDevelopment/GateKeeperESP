@@ -31,24 +31,8 @@
 class IsoTpMessage{
 
 protected:
-    /**
-    * Types of message enumerable
-    */
-    enum Type {
-        SINGLE_FRAME,
-        FIRST_FRAME,
-        CONSECUTIVE_FRAME,
-        FLOW_CONTROL
-    };
+
 public:
-
-
-    /**
-     * address message will transmit or
-     * address message recieved from
-     */
-    uint32_t address;
-
     /**
      * Pointer to high level data.
      * This is aggregated data. Meaning it can be anywhere
@@ -60,15 +44,29 @@ public:
     uint8_t * data;
 
     /**
-     * Length of data
+     * address message will transmit or
+     * address message recieved from
+     */
+    uint32_t address;
+
+
+
+    /**
+     * Length of data. This should be set before sending to iso manager
      */
     uint32_t dataLength = 0;
 
+
     /**
-     * Quickly tests if the message is valid (not too many bytes)
-     * @return validity of message, true is valid
+     * This tells the message to write to the buffer.
+     *
+     * @param buffer - pointer to buffer
+     * @param bufferSize - size of buffer, guruanteed to be at least 512 bytes
+     * @param frameNumber - Frame number in case buffer cant fit whole message
      */
-    bool isValid();
+    virtual void writeToBuffer(uint8_t * buffer, uint32_t bufferSize, uint32_t frameNumber) {};
+
+
 };
 
 
