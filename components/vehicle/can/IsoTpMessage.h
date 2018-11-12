@@ -44,10 +44,16 @@ public:
     uint8_t * data;
 
     /**
-     * address message will transmit or
-     * address message recieved from
+     * address message transmits from. For Recieved messages this is ignored.
      */
-    uint32_t address;
+    uint32_t transmitAddress;
+
+
+    /**
+     * address message receive from. This is important for multi frame messages
+     * due to flow control.
+     */
+    uint32_t receiveAddress;
 
 
 
@@ -55,6 +61,12 @@ public:
      * Length of data. This should be set before sending to iso manager
      */
     uint32_t dataLength = 0;
+
+
+    /**
+     * Extra length of data.
+     */
+    uint32_t tmpDataLength = 0;
 
 
     /**

@@ -80,6 +80,9 @@ public:
     IsoFragment() = default;
 
 
+    void copyData(uint8_t * destBuffer);
+
+
     /**
      * Create single frame fragment
      * @param addr address to send

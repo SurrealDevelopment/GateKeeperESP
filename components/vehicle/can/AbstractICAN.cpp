@@ -16,10 +16,11 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#include <esp_log.h>
 #include "AbstractICAN.h"
 
 
-#define INTERRUPT 1
+#define CAN_INTERRUPT 1
 
 #define QUEUE_CHANGE 2
 
@@ -35,7 +36,7 @@ static void canBaseTask(void * data) {
         xQueueReceive(can->taskQueue, &a, portMAX_DELAY);
         switch (a)
         {
-            case INTERRUPT:
+            case CAN_INTERRUPT:
                 can->onInterrupt();
                 break;
             case QUEUE_CHANGE:
@@ -57,8 +58,6 @@ AbstractICAN::AbstractICAN(std::string name) {
     medPriority = xQueueCreate(MED_QUEUE_SIZE, sizeof(PendingMessage));
     highPriority = xQueueCreate(HIGH_QUEUE_SIZE, sizeof(PendingMessage));
     xTaskCreate(&canBaseTask, ("can_task_" + name).c_str(), 2048, this, 10, nullptr);
-
-
 }
 AbstractICAN::~AbstractICAN() {
 
@@ -70,13 +69,16 @@ AbstractICAN::~AbstractICAN() {
 
 
 void
-AbstractICAN::writeMessage(CanMessage message, ICAN::Priority priority, std::function<void(MessageWriteResult)> onFinish) {
+AbstractICAN::writeMessage(CanMessage * message, ICAN::Priority priority,
+        std::function<void(MessageWriteResult)> onFinish,
+        std::function<void()> onRelease) {
+
 
     PendingMessage msg;
 
-    msg.message = message;
+    msg.message = *message;
     msg.onFinish = onFinish;
-
+    msg.onRelease = onRelease;
 
     switch(priority)
     {
@@ -90,6 +92,7 @@ AbstractICAN::writeMessage(CanMessage message, ICAN::Priority priority, std::fun
             xQueueSendToBack(this->medPriority,&msg, portMAX_DELAY);
             break;
     }
+
 
     uint32_t onQueueChange = QUEUE_CHANGE;
     xQueueSend(this->taskQueue, &onQueueChange, portMAX_DELAY);

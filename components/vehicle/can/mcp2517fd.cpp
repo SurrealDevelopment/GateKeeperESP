@@ -70,6 +70,9 @@ MCP2517FD::MCP2517FD(spi_device_handle_t handle, const char * name): AbstractICA
     mReadReg = (uint32_t *)(mReadBuffer); 
     mWriteReg = (uint32_t *)(mWriteBuffer);
 
+    this->semaphore = xSemaphoreCreateRecursiveMutex();
+
+    xSemaphoreGiveRecursive(this->semaphore);
 
     // queues for MCP's data
     mRegRecord.medPriority = xQueueCreate(MED_PRI_QUEUESIZE, sizeof(PendingMessage));
@@ -793,11 +796,7 @@ void MCP2517FD::interrupt() {
 
     const auto reg = (REG_CiINT *) pollingReadRegister(ADDR_C1INT);
 
-
     const auto iReg = reg->word;
-
-
-
 
     if (iReg & 1) // Tx FIFO
     {
@@ -826,22 +825,49 @@ void MCP2517FD::interrupt() {
             // read whole fifo message object since its probably faster than constant switching
 #if TIMESTAMP==0
             pollingReadAddress(rxTail, 72); // 64 data bytes + 8 initial
+            auto dataBytes = &(((uint8_t *)mReadBuffer)[8]);
+
 #else
             pollingReadAddress(rxTail, 76); // 64 data bytes + 8 initial + 4 timestamp
+            auto dataBytes = &(((uint8_t *)mReadBuffer)[12]);
 #endif
             //auto regs = (uint32_t *)mReadBuffer;
 
             auto data32 = (uint32_t *)mReadBuffer;
 
-            auto timestamp = data32[2];
-            auto test = data32[3];
+            auto dlc = data32[1] & 0b1111u;
+
+            auto fdf = (data32[1] & 0b10000000u) >> 7u;
+
+            auto extended = (data32[1] & 0b10000) >> 4;
 
 
 
+            uint32_t id = data32[0] & 0x1FFFFFFFu; // address range if extended
 
-            uint32_t id = data32[0] & 0x1FFFFFFF;
+            uint32_t dataLength;
 
-            if (id == 0x0c9)
+            if (fdf != 0)
+            {
+                // this was fdf frame
+                dataLength = dlcToLength(dlc, true);
+
+                if (!extended)
+                {
+                    // fdf can have one more bit in id
+                    id |= data32[0] & 0x20000000 >> 18;
+                    id = id & 0x00000fff;
+                }
+            }
+            else
+            {
+                dataLength = dlcToLength(dlc, false);
+                if (!extended)
+                    id = id & 0x000007ff; // address range if not extended
+            }
+
+
+            /*if (id == 0x0c9)
             {
                 // because reverse endianess
                 uint32_t rpm = (data32[3] & 0x00FF0000) >> 16;
@@ -849,23 +875,28 @@ void MCP2517FD::interrupt() {
                 auto rpmf = (rpm)/4.0;
                 ESP_LOGI(LOG_TAG, "Engine RPM from 0x%04x is %f, %s",id, rpmf, name);
 
+            }*/
+
+
+            // only send to listener if it exists.
+            if (this->listener != nullptr)
+            {
+                // send message
+                CanMessage msg;
+                msg.dataLength = dataLength;
+                msg.copyData(dataBytes);
+                msg.addresss = id;
+                msg.flexibleDataRate = fdf == 1;
+                msg.extended = extended == 1;
+
+                this->listener->onCANMessage(msg);
             }
 
-
-            //ESP_LOGI(LOG_TAG, "%s RX from 0x%04x 0x%04x%04x",name,id, data32[3], data32[4]);
-
-
-
-            //ESP_LOGI(LOG_TAG, "New CAN Message AT FIFO 0x%04x Status: 0x%08x", rxTail, statusReg);
-            //ESP_LOGI(LOG_TAG, "Byte 2: 0x%08x",(bytes[1]));
-            //ESP_LOGI(LOG_TAG, "Byte 3: 0x%08x",(bytes[2]));
-            //ESP_LOGI(LOG_TAG, "Byte 4: 0x%08x",(bytes[3]));
 
             // set uinc of FIFOCON to increment the FIFO because we read the message
             mRegRecord.fifo3con.b.IncrementHeadTail = 1;
             pollingWriteRegister(ADDR_C1FIFOCON3, mRegRecord.fifo3con.word);
             mRegRecord.fifo3con.b.IncrementHeadTail = 0;
-
 
 
             // get status again
@@ -913,6 +944,9 @@ void MCP2517FD::interrupt() {
     // write back INT to clear the interrupt
     pollingWriteRegister(ADDR_C1INT, mRegRecord.interrupt.word);
 
+    spi_device_release_bus(mHandle);
+
+
 }
 
 void MCP2517FD::softInterrupt() {
@@ -943,6 +977,7 @@ void MCP2517FD::softInterrupt() {
             continue;
         }
 
+
         // dont send fd frames if not in fd mode
         if (this->mRegRecord.canCon.b.OpMode != CAN_NORMAL_MODE &&
             msg.message.flexibleDataRate)
@@ -955,6 +990,7 @@ void MCP2517FD::softInterrupt() {
         auto addr = *pollingReadRegister(ADDR_C1TXQUA); // med pri
         addr = addr + 0x400; // offset
 
+
         auto buf = (TRANSMIT_MESSAGE_OBJECT *)mWriteBuffer;
         auto dlc = lengthToDlc(msg.message.dataLength, msg.message.flexibleDataRate);
         auto adjustLength = dlcToLength(dlc, msg.message.flexibleDataRate);
@@ -965,7 +1001,7 @@ void MCP2517FD::softInterrupt() {
         buf->control.ExtesnionFlag = (uint32_t )msg.message.extended;
         buf->control.FDF = (uint32_t )msg.message.flexibleDataRate;
         buf->control.BitRateSwitch = (uint32_t )msg.message.flexibleDataRate;
-        buf->control.DLC=
+        buf->control.DLC=dlc;
         buf->control.Sequence = this->mRegRecord.transmitCSeq++;
 
         // copy data
@@ -980,10 +1016,25 @@ void MCP2517FD::softInterrupt() {
             }
         }
 
-        // notify it can release its memory
-        msg.onRelease();
 
-        pollingWriteAddress(addr, mWriteBuffer, 64); // 64 bytes + 8 control
+        for (int i = 0; i < 64/4; i++)
+        {
+            ESP_LOGI("TEST", "WRITE: %08x", ((uint32_t  *)(mWriteBuffer))[i]);
+        }
+
+        // notify it can release its memory
+        if (msg.onRelease != nullptr)
+            msg.onRelease();
+
+        auto rem = adjustLength % 4; // must write in groups of 4 bytes
+        auto count = adjustLength / 4;
+        if (rem != 0) count++;
+
+        ESP_LOGI("TEST", "WRITE TO: %08x COUNT: %d", msg.message.addresss, count);
+
+        // any reamining bytes are okay to write they will just be ignored.
+
+        pollingWriteAddress(addr, mWriteBuffer, 8 + count*4);
 
         // set uinc of FIFOCON to increment the FIFO because we transmit the message
         mRegRecord.fifo0con.b.IncrementHeadTail = 1;
@@ -998,7 +1049,8 @@ void MCP2517FD::softInterrupt() {
 
         //@Todo set on write to only occur after we recieve a transmit event
 
-        msg.onFinish(MessageWriteResult::OKAY);
+        if (msg.onFinish != nullptr)
+            msg.onFinish(MessageWriteResult::OKAY);
 
     }
 
@@ -1197,7 +1249,6 @@ bool MCP2517FD::optimizeFiltersStep() {
 }
 
 bool MCP2517FD::listenTo(uint32_t address, bool extended) {
-
     if (listenAllMode) return true;
 
     // keep track of last filter we can write into
@@ -1248,11 +1299,16 @@ bool MCP2517FD::listenTo(uint32_t address, bool extended) {
 
 void MCP2517FD::listenToWithFallback(uint32_t address, bool extended) {
 
+    xSemaphoreTakeRecursive(this->semaphore, portTICK_RATE_MS);
+
     if (!listenTo(address, extended))
     {
         ESP_LOGW(LOG_TAG, "%s Filter Overflow. Switching to fallback mode.", name);
         listenAll();
     }
+
+    xSemaphoreGiveRecursive(this->semaphore);
+
 }
 
 
@@ -1261,7 +1317,13 @@ void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
     // stop listening is going to be a lot harder than simply listening
     // reason being we need to deal with splitting filters up.
 
-    if (listenAllMode) return; // return if in listen all mode
+    xSemaphoreTakeRecursive(this->semaphore, portTICK_RATE_MS);
+
+
+    if (listenAllMode) {
+        xSemaphoreGiveRecursive(this->semaphore);
+        return;
+    }; // return if in listen all mode
 
     // check if in filters already
     for (uint32_t i = 0; i < filterStackCount; i++)
@@ -1298,6 +1360,8 @@ void MCP2517FD::stopListeningTo(uint32_t address, bool extended) {
 
         }
     }
+
+    xSemaphoreGiveRecursive(this->semaphore);
 
     // else it doesnt exist just return
     return;
@@ -1355,10 +1419,21 @@ void MCP2517FD::debugPrintRemoteFilters() {
 }
 
 void MCP2517FD::onWriteMessageQueueChange() {
+    xSemaphoreTakeRecursive(semaphore, portMAX_DELAY);
+
+    spi_device_acquire_bus(mHandle, portMAX_DELAY);
+
     this->softInterrupt();
+
+    spi_device_release_bus(mHandle);
+
+    xSemaphoreGiveRecursive(semaphore);
+
 }
 
 void MCP2517FD::onInterrupt() {
+    xSemaphoreTakeRecursive(semaphore, portMAX_DELAY);
     this->interrupt();
+    xSemaphoreGiveRecursive(semaphore);
 }
 

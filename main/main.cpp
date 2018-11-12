@@ -84,8 +84,10 @@ static void IRAM_ATTR gpio_isr_handler(void * arg)
     }
 }
 
-uint8_t  bytes[] =  {0x07, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
-uint8_t  bytes2[] =  {0x1, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
+uint8_t  bytes[200] =  {0x00};
+
+uint8_t  bytes2[64] =  {0x00};
+
 
 
 void start()
@@ -271,27 +273,43 @@ void start()
 
     a = new IsoManager(can1);
 
-    CanMessage test;
-
-    test.addresss=0x7e8;
-
-    test.dataLength=8;
-    test.extended=false;
-    test.flexibleDataRate=false;
-    test.data = bytes;
 
 
-    a->openStandardChannel(0x7e8, [](IsoManager::IsoUpdate msg)->bool {
-        ESP_LOGW("TEST", "Got msg");
+    auto fc = IsoFragment::makeFlowControl(0x7e8, bytes2, IsoFragment::FlowControlFlag::ContinueToSend,
+            0,
+            0);
+
+
+    a->openStandardChannel(0x7e0, 0x7e8, [](IsoManager::IsoUpdate msg)->bool {
+        ESP_LOGW("TEST", "Got RESPONSE");
         return true;
     });
 
 
 
+
+    vTaskDelay(100/portTICK_RATE_MS);
     can1->debugPrintRemoteFilters();
     can1->debugPrintFilters();
 
-    SAEShowCurrentData req(0x7e0, 11);
+    IsoTpMessage tp;
+
+
+    tp.dataLength = 200;
+    tp.data = bytes;
+    tp.transmitAddress=0x7e0;
+    tp.receiveAddress=0x7e8;
+
+
+    a->queueIsoMessage(tp, [](IsoManager::IsoUpdate update)->bool {
+        ESP_LOGW("TEST", "GOT WROTE");
+        return true;
+    });
+
+
+    // mock flow control
+    a->onCANMessage(fc.toCanMessage(false));
+
 
 
 

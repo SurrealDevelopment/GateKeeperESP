@@ -26,8 +26,8 @@
 #include <freertos/task.h>
 
 
-#define MED_QUEUE_SIZE 8
-#define HIGH_QUEUE_SIZE 3
+#define MED_QUEUE_SIZE 4
+#define HIGH_QUEUE_SIZE 2
 
 
 class AbstractICAN : public ICAN{
@@ -57,7 +57,8 @@ public:
 
     void setCanListener(ICANListener * listener) override = 0;
 
-    void writeMessage(CanMessage message, ICAN::Priority priority, std::function<void(MessageWriteResult)> onFinish) override;
+    void writeMessage(CanMessage * message, ICAN::Priority priority, std::function<void(MessageWriteResult)> onFinish,
+                      std::function<void()> onRelease) override;
 
     /**
      * Called whenever something is added to one of the message queues

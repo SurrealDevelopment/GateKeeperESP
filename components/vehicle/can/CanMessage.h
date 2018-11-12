@@ -31,13 +31,19 @@ public:
 
     uint32_t addresss;
 
-    uint8_t * data; // pointer to data. Handle immediately
+    uint8_t data[64]; // now storing data locally for easier management
 
     uint32_t dataLength;
 
     bool flexibleDataRate; // if is CAN-FD
 
     bool extended;
+
+    /**
+     * Copies data argument to our data.
+     * @param data
+     */
+    void copyData(uint8_t * data);
 
     CanMessage();
 

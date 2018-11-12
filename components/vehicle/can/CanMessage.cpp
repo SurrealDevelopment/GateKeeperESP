@@ -22,3 +22,10 @@
 CanMessage::CanMessage() {
 
 }
+
+void CanMessage::copyData(uint8_t *data) {
+    for (uint32_t i = 0; i < this->dataLength; i++)
+    {
+        this->data[i] = data[i];
+    }
+}

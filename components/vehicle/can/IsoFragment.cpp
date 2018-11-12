@@ -332,8 +332,16 @@ CanMessage IsoFragment::toCanMessage(bool flex) {
     msg.addresss = this->addr;
     msg.flexibleDataRate = flex; // its okay to make a non-flex-required frame a flex frame.
 
+    msg.extended = false;
 
     return msg;
 
+}
+
+void IsoFragment::copyData(uint8_t *destBuffer) {
+    for (int i = 0; i < dataLength; i++)
+    {
+        destBuffer[i] = data[i];
+    }
 }
 

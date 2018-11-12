@@ -15,8 +15,9 @@
  /**
  * SPI Deffinitions header
  * http://ww1.microchip.com/downloads/en/DeviceDoc/MCP2517FD-External-CAN-FD-Controller-with-SPI-Interface-20005688B.pdf
+  *
+  * http://ww1.microchip.com/downloads/en/DeviceDoc/MCP251XXFD-CAN-FD-Controller-Module-Family-Reference-Manual-20005678B.pdf
  *
-
  */
 #ifndef _MCP_2517FD_SPI_H
 #define _MCP_2517FD_SPI_H
@@ -339,6 +340,17 @@ typedef union _REG_CiINT{
         uint32_t SystemError : 1;
         uint32_t CANBusError : 1;
         uint32_t BusWakeUp : 1;
+        /**
+         * If  a  CAN  bus  error  or  DLC  mismatch  was  detec
+         * ted  during  the  last  message  transmitted  or
+         * received, the IVMIF will be set. The CiBDIAG1 regi
+         * ster sets a flag for each specific error. The
+         * flag must be cleared by the application.
+         * The following CAN bus errors will trigger the inte
+         * rrupt in case an error frame was transmitted:
+         * CRC, Stuff bit, Form, Bit, ACK.
+         * The flag will not be set if the ESI of a received message was set
+         */
         uint32_t InvalidMessage : 1;
 
 
@@ -501,7 +513,7 @@ typedef union _TRANSMIT_MESSAGE_OBJECT {
     struct {
 
         uint32_t standardIdentifier : 11;
-        uint32_t extendedIdentifier: 10;
+        uint32_t extendedIdentifier: 18;
         uint32_t SID11 : 1;
         uint32_t RES1 : 2;
 

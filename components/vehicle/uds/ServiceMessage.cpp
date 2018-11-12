@@ -22,7 +22,7 @@
 
 ServiceMessage::ServiceMessage(IsoTpMessage  msg) {
 
-    this->address = msg.address;
+    this->transmitAddress = msg.transmitAddress;
 
 
     uint32_t serviceId = getMessageSid(msg);
@@ -37,7 +37,7 @@ ServiceMessage::ServiceMessage(IsoTpMessage  msg) {
 }
 
 ServiceMessage::ServiceMessage(uint32_t addr, uint32_t sid) {
-    this->address = addr;
+    this->transmitAddress = addr;
 
     this->validity = Validity ::VALID;
     this->serviceId = sid;

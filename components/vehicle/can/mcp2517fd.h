@@ -221,6 +221,11 @@ private:
     void softInterrupt();
 
 
+    /**
+     * Semaphore for a few cases
+     */
+    QueueHandle_t semaphore;
+
 
 
 
